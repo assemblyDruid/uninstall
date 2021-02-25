@@ -27,7 +27,7 @@ RunDynamicArrayTests()
     for (size_t ii = 0; ii < 0xFF; ii++)
     {
         uDAPush(daTest_u8, &ii);
-        uTesetAssert(( u8 )ii == *( u8* )uDAIndex(daTest_u8, ii), ARRAY_TST_FAIL_MSG);
+        uTesetAssert((u8)ii == *(u8*)uDAIndex(daTest_u8, ii), ARRAY_TST_FAIL_MSG);
     }
     for (size_t ii = 0xFF; ii > 0; ii--)
     {
@@ -42,7 +42,7 @@ RunDynamicArrayTests()
     for (size_t ii = 0; ii < 0xFFFF; ii++)
     {
         uDAPush(daTest_u16, &ii);
-        uTesetAssert(( u16 )ii == *( u16* )uDAIndex(daTest_u16, ii), ARRAY_TST_FAIL_MSG);
+        uTesetAssert((u16)ii == *(u16*)uDAIndex(daTest_u16, ii), ARRAY_TST_FAIL_MSG);
     }
     for (size_t ii = 0xFFFF; ii > 0; ii--)
     {
@@ -57,7 +57,7 @@ RunDynamicArrayTests()
     for (size_t ii = 0; ii < 0xFFFF; ii++)
     {
         uDAPush(daTest_u32, &ii);
-        uTesetAssert((( u32 )ii == *( u32* )uDAIndex(daTest_u32, ii)), ARRAY_TST_FAIL_MSG);
+        uTesetAssert(((u32)ii == *(u32*)uDAIndex(daTest_u32, ii)), ARRAY_TST_FAIL_MSG);
     }
     for (size_t ii = 0xFFFF; ii > 0; ii--)
     {
@@ -72,7 +72,7 @@ RunDynamicArrayTests()
     for (size_t ii = 0; ii < 0xFFFF; ii++)
     {
         uDAPush(daTest_u64, &ii);
-        uTesetAssert((( u64 )ii == *( u64* )uDAIndex(daTest_u64, ii)), ARRAY_TST_FAIL_MSG);
+        uTesetAssert(((u64)ii == *(u64*)uDAIndex(daTest_u64, ii)), ARRAY_TST_FAIL_MSG);
     }
     for (size_t ii = 0xFFFF; ii > 0; ii--)
     {
@@ -87,8 +87,8 @@ RunDynamicArrayTests()
     for (size_t ii = 0; ii < 0xFFFF; ii++)
     {
         r32 value = (r32)(ii - _PI_);
-        uDAPush(daTest_r32, ( r32* )&value);
-        uTesetAssert((value == *( r32* )uDAIndex(daTest_r32, ii)), ARRAY_TST_FAIL_MSG);
+        uDAPush(daTest_r32, (r32*)&value);
+        uTesetAssert((value == *(r32*)uDAIndex(daTest_r32, ii)), ARRAY_TST_FAIL_MSG);
     }
     for (size_t ii = 0xFFFF; ii > 0; ii--)
     {
@@ -102,9 +102,9 @@ RunDynamicArrayTests()
     uDynamicArray* daTest_r64 = uDAInit(r64);
     for (size_t ii = 0; ii < 0xFFFF; ii++)
     {
-        r64 value = ( r64 )ii - _PI_;
+        r64 value = (r64)ii - _PI_;
         uDAPush(daTest_r64, &value);
-        uTesetAssert((value == *( r64* )uDAIndex(daTest_r64, ii)), ARRAY_TST_FAIL_MSG);
+        uTesetAssert((value == *(r64*)uDAIndex(daTest_r64, ii)), ARRAY_TST_FAIL_MSG);
     }
     for (size_t ii = 0xFFFF; ii > 0; ii--)
     {
@@ -135,23 +135,30 @@ RunMemroyArenaTests()
     allocation_size                     = 512;
     uMemoryArena* memory_arena_ptr_test = uMAInit(allocation_size);
     uTesetAssert((memory_arena_ptr_test->data != NULL), memoryArenaTestFailMessage);
-    uTesetAssert((memory_arena_ptr_test->data == (memory_arena_ptr_test->data + memory_arena_ptr_test->offset)),
+    uTesetAssert((memory_arena_ptr_test->data ==
+                  (memory_arena_ptr_test->data + memory_arena_ptr_test->offset)),
                  memoryArenaTestFailMessage);
-    uTesetAssert((memory_arena_ptr_test->arena_size == allocation_size), memoryArenaTestFailMessage);
-    uTesetAssert(uMADestroy(memory_arena_ptr_test), "Failed to deallocate on uMemoryArena ptr test");
+    uTesetAssert((memory_arena_ptr_test->arena_size == allocation_size),
+                 memoryArenaTestFailMessage);
+    uTesetAssert(uMADestroy(memory_arena_ptr_test),
+                 "Failed to deallocate on uMemoryArena ptr test");
 
     // Test standard push
     allocation_size                           = 1;
     uMemoryArena* memory_arena_push_data_test = uMAInit(allocation_size);
     uTesetAssert((memory_arena_push_data_test->data != NULL), memoryArenaTestFailMessage);
-    uTesetAssert(
-      (memory_arena_push_data_test->data == (memory_arena_push_data_test->data + memory_arena_push_data_test->offset)),
-      memoryArenaTestFailMessage);
-    uTesetAssert(memory_arena_push_data_test->arena_size == allocation_size, memoryArenaTestFailMessage);
+    uTesetAssert((memory_arena_push_data_test->data ==
+                  (memory_arena_push_data_test->data + memory_arena_push_data_test->offset)),
+                 memoryArenaTestFailMessage);
+    uTesetAssert(memory_arena_push_data_test->arena_size == allocation_size,
+                 memoryArenaTestFailMessage);
     u8  standard_test_target        = 5;
-    u8* standard_test_target_result = uMAPushData(memory_arena_push_data_test, standard_test_target, u8);
+    u8* standard_test_target_result = uMAPushData(memory_arena_push_data_test,
+                                                  standard_test_target,
+                                                  u8);
     uTesetAssert((*standard_test_target_result == 5), memoryArenaTestFailMessage);
-    uTesetAssert(uMADestroy(memory_arena_push_data_test), "Failed to destroy arena on standard data push test.\n");
+    uTesetAssert(uMADestroy(memory_arena_push_data_test),
+                 "Failed to destroy arena on standard data push test.\n");
 
     // Test over-size push
     /* allocation_size = 1; */
@@ -166,8 +173,8 @@ RunMemroyArenaTests()
     /* uTesetAssert(memory_arena_overflow_test->arena_size == allocation_size,
      * memoryArenaTestFailMessage); */
     /* u16 oversize_test_target = 500; */
-    /* u16* oversize_test_target_result = uMAPushData(memory_arena_overflow_test,
-     * oversize_test_target, u16); */
+    /* u16* oversize_test_target_result =
+     * uMAPushData(memory_arena_overflow_test, oversize_test_target, u16); */
     /* uTesetAssert((oversize_test_target_result ==
      * (u16*)(memory_arena_overflow_test->data)), */
     /*                 memoryArenaTestFailMessage); */
@@ -187,15 +194,19 @@ RunMemroyArenaTests()
     allocation_size                        = sizeof(testStruct);
     uMemoryArena* memory_arena_struct_test = uMAInit(allocation_size);
     uTesetAssert((memory_arena_struct_test->data != NULL), memoryArenaTestFailMessage);
-    uTesetAssert(
-      (memory_arena_struct_test->data == (memory_arena_struct_test->data + memory_arena_struct_test->offset)),
-      memoryArenaTestFailMessage);
-    uTesetAssert(memory_arena_struct_test->arena_size == allocation_size, memoryArenaTestFailMessage);
-    uMATestStruct* test_struct_result = uMAPushData(memory_arena_struct_test, testStruct, uMATestStruct);
+    uTesetAssert((memory_arena_struct_test->data ==
+                  (memory_arena_struct_test->data + memory_arena_struct_test->offset)),
+                 memoryArenaTestFailMessage);
+    uTesetAssert(memory_arena_struct_test->arena_size == allocation_size,
+                 memoryArenaTestFailMessage);
+    uMATestStruct* test_struct_result = uMAPushData(memory_arena_struct_test,
+                                                    testStruct,
+                                                    uMATestStruct);
     uTesetAssert((test_struct_result->iptr == testStruct.iptr), memoryArenaTestFailMessage);
     uTesetAssert((test_struct_result->i == testStruct.i), memoryArenaTestFailMessage);
     uTesetAssert((test_struct_result->f == testStruct.f), memoryArenaTestFailMessage);
-    uTesetAssert(uMADestroy(memory_arena_struct_test), "Failed to deallocate on uMemoryArena struct test");
+    uTesetAssert(uMADestroy(memory_arena_struct_test),
+                 "Failed to deallocate on uMemoryArena struct test");
 
     // Test multi-type push
     allocation_size                            = 336;
@@ -204,7 +215,8 @@ RunMemroyArenaTests()
     uTesetAssert((memory_arena_multi_type_test->data ==
                   (memory_arena_multi_type_test->data + memory_arena_multi_type_test->offset)),
                  memoryArenaTestFailMessage);
-    uTesetAssert(memory_arena_multi_type_test->arena_size == allocation_size, memoryArenaTestFailMessage);
+    uTesetAssert(memory_arena_multi_type_test->arena_size == allocation_size,
+                 memoryArenaTestFailMessage);
     u8*  testStruct_u8  = uMAPushData(memory_arena_multi_type_test, testStruct.i, u8);
     u16* testStruct_u16 = uMAPushData(memory_arena_multi_type_test, testStruct.i, u16);
     u32* testStruct_u32 = uMAPushData(memory_arena_multi_type_test, testStruct.i, u32);
@@ -215,17 +227,18 @@ RunMemroyArenaTests()
     s64* testStruct_s64 = uMAPushData(memory_arena_multi_type_test, testStruct.i, s64);
     r32* testStruct_r32 = uMAPushData(memory_arena_multi_type_test, testStruct.i, r32);
     r64* testStruct_r64 = uMAPushData(memory_arena_multi_type_test, testStruct.i, r64);
-    uTesetAssert((*testStruct_u8 == ( u8 )testStruct.i), memoryArenaTestFailMessage);
-    uTesetAssert((*testStruct_u16 == ( u16 )testStruct.i), memoryArenaTestFailMessage);
-    uTesetAssert((*testStruct_u32 == ( u32 )testStruct.i), memoryArenaTestFailMessage);
-    uTesetAssert((*testStruct_u64 == ( u64 )testStruct.i), memoryArenaTestFailMessage);
-    uTesetAssert((*testStruct_s8 == ( s8 )testStruct.i), memoryArenaTestFailMessage);
-    uTesetAssert((*testStruct_s16 == ( s16 )testStruct.i), memoryArenaTestFailMessage);
-    uTesetAssert((*testStruct_s32 == ( s32 )testStruct.i), memoryArenaTestFailMessage);
-    uTesetAssert((*testStruct_s64 == ( s64 )testStruct.i), memoryArenaTestFailMessage);
-    uTesetAssert((*testStruct_r32 == ( r32 )testStruct.i), memoryArenaTestFailMessage);
-    uTesetAssert((*testStruct_r64 == ( r64 )testStruct.i), memoryArenaTestFailMessage);
-    uTesetAssert(uMADestroy(memory_arena_multi_type_test), "Failed to deallocate on uMemoryArena multi-type test");
+    uTesetAssert((*testStruct_u8 == (u8)testStruct.i), memoryArenaTestFailMessage);
+    uTesetAssert((*testStruct_u16 == (u16)testStruct.i), memoryArenaTestFailMessage);
+    uTesetAssert((*testStruct_u32 == (u32)testStruct.i), memoryArenaTestFailMessage);
+    uTesetAssert((*testStruct_u64 == (u64)testStruct.i), memoryArenaTestFailMessage);
+    uTesetAssert((*testStruct_s8 == (s8)testStruct.i), memoryArenaTestFailMessage);
+    uTesetAssert((*testStruct_s16 == (s16)testStruct.i), memoryArenaTestFailMessage);
+    uTesetAssert((*testStruct_s32 == (s32)testStruct.i), memoryArenaTestFailMessage);
+    uTesetAssert((*testStruct_s64 == (s64)testStruct.i), memoryArenaTestFailMessage);
+    uTesetAssert((*testStruct_r32 == (r32)testStruct.i), memoryArenaTestFailMessage);
+    uTesetAssert((*testStruct_r64 == (r64)testStruct.i), memoryArenaTestFailMessage);
+    uTesetAssert(uMADestroy(memory_arena_multi_type_test),
+                 "Failed to deallocate on uMemoryArena multi-type test");
 
     // Test array push
     uMemoryArena* memory_arena_array_test = uMAInit(256);
@@ -237,15 +250,16 @@ RunMemroyArenaTests()
     u8 test_array[256];
     for (size_t ii = 0; ii < 256; ii++)
     {
-        test_array[ii] = ( u8 )ii;
+        test_array[ii] = (u8)ii;
     }
     u8* test_array_result = uMAPushArray(memory_arena_array_test, &test_array, u8, 256);
     for (size_t ii = 0; ii < 256; ii++)
     {
-        uTesetAssert((test_array_result[ii] == test_array[ii] && test_array[ii] == ( u8 )ii),
+        uTesetAssert((test_array_result[ii] == test_array[ii] && test_array[ii] == (u8)ii),
                      memoryArenaTestFailMessage);
     }
-    uTesetAssert(uMADestroy(memory_arena_array_test), "Failed to deallocate on uMemoryArena array test");
+    uTesetAssert(uMADestroy(memory_arena_array_test),
+                 "Failed to deallocate on uMemoryArena array test");
 }
 
 void
@@ -256,9 +270,9 @@ RunMathsTests()
     //
     // v3 Tests
     //
-    v3 v3A      = {};
-    v3 v3B      = {};
-    v3 v3Result = {};
+    v3 v3A      = { 0 };
+    v3 v3B      = { 0 };
+    v3 v3Result = { 0 };
 
     // v3Add()
     v3Set(&v3A, 1.0f, 1.0f, 1.0f);
@@ -275,19 +289,23 @@ RunMathsTests()
     // v3ScalarMul()
     v3Set(&v3A, 1.0f, 1.0f, 1.0f);
     v3ScalarMul(&v3A, 5.0f, &v3Result);
-    uTesetAssert(v3Result.x == 5 && v3Result.y == 5 && v3Result.z == 5, "Failed v3ScalarMul() tests");
+    uTesetAssert(v3Result.x == 5 && v3Result.y == 5 && v3Result.z == 5,
+                 "Failed v3ScalarMul() tests");
 
     // v3Mag()
     v3Set(&v3A, 1.0f, 1.0f, 1.0f);
-    uTesetAssert(v3Mag(&v3A) == ( r32 )sqrt(3), "Failed v3Mag() tests");
+    uTesetAssert(v3Mag(&v3A) == (r32)sqrt(3), "Failed v3Mag() tests");
     v3Set(&v3A, 0.0f, 0.0f, 0.0f);
     uTesetAssert(v3Mag(&v3A) == 0, "Failed v3Mag() tests");
 
     // v3Norm()
     v3Set(&v3A, 1.0f, 2.0f, 3.0f);
     r32 NormMagv3Result = v3Mag(&v3A);
-    uTesetAssert(NormMagv3Result = ( r32 )sqrt(14), "Failed v3Norm() tests");
-    v3Set(&v3Result, (v3A.x / NormMagv3Result), (v3A.y / NormMagv3Result), (v3A.z / NormMagv3Result));
+    uTesetAssert(NormMagv3Result = (r32)sqrt(14), "Failed v3Norm() tests");
+    v3Set(&v3Result,
+          (v3A.x / NormMagv3Result),
+          (v3A.y / NormMagv3Result),
+          (v3A.z / NormMagv3Result));
     v3Norm(&v3A);
     uTesetAssert(v3A.x == v3Result.x, "Failed v3Norm() tests");
     uTesetAssert(v3A.y == v3Result.y, "Failed v3Norm() tests");
@@ -315,21 +333,23 @@ RunMathsTests()
     //
     // v4 Tests
     //
-    v4 v4A      = {};
-    v4 v4B      = {};
-    v4 v4Result = {};
+    v4 v4A      = { 0 };
+    v4 v4B      = { 0 };
+    v4 v4Result = { 0 };
 
     // v4Add()
     v4Set(&v4A, 1.0f, 1.0f, 1.0f, 1.0f);
     v4Set(&v4B, 1.0f, 1.0f, 1.0f, 1.0f);
     v4Add(&v4A, &v4B, &v4Result);
-    uTesetAssert(v4Result.x == 2 && v4Result.y == 2 && v4Result.z == 2 && v4Result.w == 2, "Failed v4Add() tests");
+    uTesetAssert(v4Result.x == 2 && v4Result.y == 2 && v4Result.z == 2 && v4Result.w == 2,
+                 "Failed v4Add() tests");
 
     // v4Sub()
     v4Set(&v4A, 1.0f, 1.0f, 1.0f, 1.0f);
     v4Set(&v4B, 1.0f, 1.0f, 1.0f, 1.0f);
     v4Sub(&v4A, &v4B, &v4Result);
-    uTesetAssert(v4Result.x == 0 && v4Result.y == 0 && v4Result.z == 0 && v4Result.w == 0, "Failed v4Sub() tests");
+    uTesetAssert(v4Result.x == 0 && v4Result.y == 0 && v4Result.z == 0 && v4Result.w == 0,
+                 "Failed v4Sub() tests");
 
     // v4ScalarMul()
     v4Set(&v4A, 1.0f, 1.0f, 1.0f, 1.0f);
@@ -339,14 +359,14 @@ RunMathsTests()
 
     // v4Mag()
     v4Set(&v4A, 1.0f, 1.0f, 1.0f, 1.0f);
-    uTesetAssert(v4Mag(&v4A) == ( r32 )sqrt(4), "Failed v4Mag() tests");
+    uTesetAssert(v4Mag(&v4A) == (r32)sqrt(4), "Failed v4Mag() tests");
     v4Set(&v4A, 0.0f, 0.0f, 0.0f, 0.0f);
     uTesetAssert(v4Mag(&v4A) == 0, "Failed v4Mag() tests");
 
     // v4Norm()
     v4Set(&v4A, 1.0f, 2.0f, 3.0f, 4.0f);
     r32 NormMagv4Result = v4Mag(&v4A);
-    uTesetAssert(IsWithinTolerance(NormMagv4Result, ( r32 )sqrt(30)), "Failed v4Norm() tests");
+    uTesetAssert(IsWithinTolerance(NormMagv4Result, (r32)sqrt(30)), "Failed v4Norm() tests");
     v4Set(&v4Result,
           (v4A.x / NormMagv4Result),
           (v4A.y / NormMagv4Result),
@@ -371,8 +391,8 @@ RunMathsTests()
     //
     // m3 Tests
     //
-    m3 m3A      = {};
-    m3 m3Result = {};
+    m3 m3A      = { 0 };
+    m3 m3Result = { 0 };
 
     // m3Ident()
     m3Ident(&m3A);
@@ -420,7 +440,7 @@ RunMathsTests()
 
     // m3Mult()
     m3Ident(&m3A);
-    m3 m3B = {};
+    m3 m3B = { 0 };
     m3Mult(&m3A, &m3B, &m3Result);
     sum = 0;
     for (uint8_t idx = 0; idx < 9; idx++)
@@ -446,8 +466,8 @@ RunMathsTests()
     //
     // m4 Tests
     //
-    m4 m4A      = {};
-    m4 m4Result = {};
+    m4 m4A      = { 0 };
+    m4 m4Result = { 0 };
 
     // m4Ident()
     m4Ident(&m4A);
@@ -498,7 +518,7 @@ RunMathsTests()
 
     // m4Mult()
     m4Ident(&m4A);
-    m4 m4B = {};
+    m4 m4B = { 0 };
     m4Mult(&m4A, &m4B, &m4Result);
     sum = 0;
     for (uint8_t idx = 0; idx < 16; idx++)

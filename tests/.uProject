@@ -1,0 +1,3 @@
+@ProjectName               "Understone Tests"
+@ExecutableName            "understone_tests"
+@ExecutableOutputSubfolder "tests"

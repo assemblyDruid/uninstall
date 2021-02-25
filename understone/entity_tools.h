@@ -1,11 +1,14 @@
 #ifndef __UE_ENTITY_TOOLS_H___
 #define __UE_ENTITY_TOOLS_H___
 
+#include <stdbool.h>
+
 //#include <rt_settings.h> [ cfarvin::REVISIT ]
-#include <color_tools.h>
-#include <macro_tools.h>
-#include <maths_tools.h>
-#include <type_tools.h>
+#include "color_tools.h"
+#include "macro_tools.h"
+#include "material_tools.h"
+#include "maths_tools.h"
+#include "type_tools.h"
 
 typedef enum
 {
@@ -67,12 +70,12 @@ typedef struct
 //
 // PROTOTYPES (as needed)
 //
-__UE_inline__ static void
+static void
 IntersectEntity(const Ray* restrict const    ray,
                 const Entity* restrict const entity,
                 _mut_ RayIntersection* restrict const intersection);
 
-__UE_inline__ static void
+static void
 TraceEntityArray(const Ray* restrict const ray,
                  _mut_ RayIntersection* restrict const intersection,
                  _mut_ r32* restrict const global_magnitude_threshold,
@@ -83,7 +86,7 @@ TraceEntityArray(const Ray* restrict const ray,
 //
 #if __UE_AA__reflections
 //
-__UE_inline__ static void
+static void
 ReflectRays(/* const Ray*             restrict const ray, */
             _mut_ RayIntersection* restrict const incident_intersection,
             /* _mut_ r32*             restrict const global_magnitude_threshold,
@@ -128,24 +131,24 @@ ReflectRays(/* const Ray*             restrict const ray, */
               incident_intersection->normal_vector.y,
               incident_intersection->normal_vector.z);
 
-        r32 xrand = ( r32 )XorShift32() + TOLERANCE;
-        r32 yrand = ( r32 )XorShift32() + TOLERANCE;
-        r32 zrand = ( r32 )XorShift32() + TOLERANCE;
+        r32 xrand = (r32)XorShift32() + TOLERANCE;
+        r32 yrand = (r32)XorShift32() + TOLERANCE;
+        r32 zrand = (r32)XorShift32() + TOLERANCE;
         v3SetAndNorm(&bounce_ray.direction,
-                     bounce_ray.origin.x + NormalizeToRange(( r32 )TOLERANCE,
-                                                            (r32)(~( u32 )0),
-                                                            ( r32 )TOLERANCE,
-                                                            ( r32 )__UE_AA__reflection_noise,
+                     bounce_ray.origin.x + NormalizeToRange((r32)TOLERANCE,
+                                                            (r32)(~(u32)0),
+                                                            (r32)TOLERANCE,
+                                                            (r32)__UE_AA__reflection_noise,
                                                             xrand),
-                     bounce_ray.origin.y + NormalizeToRange(( r32 )TOLERANCE,
-                                                            (r32)(~( u32 )0),
-                                                            ( r32 )TOLERANCE,
-                                                            ( r32 )__UE_AA__reflection_noise,
+                     bounce_ray.origin.y + NormalizeToRange((r32)TOLERANCE,
+                                                            (r32)(~(u32)0),
+                                                            (r32)TOLERANCE,
+                                                            (r32)__UE_AA__reflection_noise,
                                                             yrand),
-                     bounce_ray.origin.z + NormalizeToRange(( r32 )TOLERANCE,
-                                                            (r32)(~( u32 )0),
-                                                            ( r32 )TOLERANCE,
-                                                            ( r32 )__UE_AA__reflection_noise,
+                     bounce_ray.origin.z + NormalizeToRange((r32)TOLERANCE,
+                                                            (r32)(~(u32)0),
+                                                            (r32)TOLERANCE,
+                                                            (r32)__UE_AA__reflection_noise,
                                                             zrand));
 
 // Ensure that the reflected ray does not intersect
@@ -182,44 +185,44 @@ ReflectRays(/* const Ray*             restrict const ray, */
 #endif // __UE_AA__reflections
 //
 
-__UE_inline__ static void
+static void
 SetRayDirectionByPixelCoordAA(_mut_ Ray* restrict const ray, const size_t pix_x, const size_t pix_y)
 {
-    const r32 xOr_contribution_x = NormalizeToRange(( r32 )TOLERANCE,
-                                                    (r32)(~( u32 )0),
-                                                    ( r32 )TOLERANCE,
-                                                    ( r32 )__UE_AA__noise,
-                                                    ( r32 )XorShift32() + ( r32 )TOLERANCE);
+    const r32 xOr_contribution_x = NormalizeToRange((r32)TOLERANCE,
+                                                    (r32)(~(u32)0),
+                                                    (r32)TOLERANCE,
+                                                    (r32)__UE_AA__noise,
+                                                    (r32)XorShift32() + (r32)TOLERANCE);
 
-    const r32 xOr_contribution_y = NormalizeToRange(( r32 )TOLERANCE,
-                                                    (r32)(~( u32 )0),
-                                                    ( r32 )TOLERANCE,
-                                                    ( r32 )__UE_AA__noise,
-                                                    ( r32 )XorShift32() + ( r32 )TOLERANCE);
+    const r32 xOr_contribution_y = NormalizeToRange((r32)TOLERANCE,
+                                                    (r32)(~(u32)0),
+                                                    (r32)TOLERANCE,
+                                                    (r32)__UE_AA__noise,
+                                                    (r32)XorShift32() + (r32)TOLERANCE);
 
-    const r32 x_numerator = ( r32 )pix_x + xOr_contribution_x;
-    const r32 y_numerator = ( r32 )pix_y + xOr_contribution_y;
+    const r32 x_numerator = (r32)pix_x + xOr_contribution_x;
+    const r32 y_numerator = (r32)pix_y + xOr_contribution_y;
 
-    ray->direction.x = ((x_numerator / ( r32 )IMAGE_WIDTH) - 0.5f) * ASPECT_RATIO;
-    ray->direction.y = (y_numerator / ( r32 )IMAGE_HEIGHT) - 0.5f;
+    ray->direction.x = ((x_numerator / (r32)IMAGE_WIDTH) - 0.5f) * ASPECT_RATIO;
+    ray->direction.y = (y_numerator / (r32)IMAGE_HEIGHT) - 0.5f;
     ray->direction.z = -1;
 }
 
-__UE_inline__ static void
+static void
 SetRayDirectionByPixelCoord(_mut_ Ray* restrict const ray, const size_t pix_x, const size_t pix_y)
 {
-    ray->direction.x = ((pix_x / ( r32 )IMAGE_WIDTH) - 0.5f) * ASPECT_RATIO;
-    ray->direction.y = (pix_y / ( r32 )IMAGE_HEIGHT) - 0.5f;
+    ray->direction.x = ((pix_x / (r32)IMAGE_WIDTH) - 0.5f) * ASPECT_RATIO;
+    ray->direction.y = (pix_y / (r32)IMAGE_HEIGHT) - 0.5f;
     ray->direction.z = -1;
 }
 
 static Entity*
 CreateEntities(const size_t entity_count)
 {
-    return ( Entity* )calloc(entity_count, sizeof(Entity));
+    return (Entity*)calloc(entity_count, sizeof(Entity));
 }
 
-__UE_inline__ static void
+static void
 IntersectEntity(const Ray* restrict const    ray,
                 const Entity* restrict const entity,
                 _mut_ RayIntersection* restrict const intersection)
@@ -259,7 +262,7 @@ IntersectEntity(const Ray* restrict const    ray,
     if (intersection->does_intersect)
     {
         // Set intersection magnitude
-        r32 magnitude = ((b * -1.0f) - ( r32 )sqrt(discriminant)) / (2.0f * a);
+        r32 magnitude = ((b * -1.0f) - (r32)sqrt(discriminant)) / (2.0f * a);
 
         // Note: Bounces may be in any direction
         //__UE_ASSERT__(magnitude >= 0);
@@ -279,14 +282,16 @@ IntersectEntity(const Ray* restrict const    ray,
 
         // [ cfarvin::REVSIT ] intersection materials
         // Set intersection material
-        intersection->intersection_material.max_generated_rays     = entity->material.max_generated_rays;
-        intersection->intersection_material.material_class         = entity->material.material_class;
-        intersection->intersection_material.absorbtion_coefficient = entity->material.absorbtion_coefficient;
-        intersection->intersection_material.color                  = entity->material.color;
+        intersection->intersection_material.max_generated_rays = entity->material
+                                                                   .max_generated_rays;
+        intersection->intersection_material.material_class = entity->material.material_class;
+        intersection->intersection_material.absorbtion_coefficient = entity->material
+                                                                       .absorbtion_coefficient;
+        intersection->intersection_material.color = entity->material.color;
     }
 }
 
-__UE_inline__ static void
+static void
 TraceEntity(const Ray* restrict const ray,
             _mut_ RayIntersection* restrict const intersection,
             _mut_ r32* restrict const global_magnitude_threshold,
@@ -300,14 +305,15 @@ TraceEntity(const Ray* restrict const ray,
     __UE_ASSERT__(global_magnitude_threshold);
 
     IntersectEntity(ray, entity, intersection);
-    if (intersection->does_intersect && (fabs(intersection->magnitude) < fabs(*global_magnitude_threshold)))
+    if (intersection->does_intersect &&
+        (fabs(intersection->magnitude) < fabs(*global_magnitude_threshold)))
     {
-        *global_magnitude_threshold = ( r32 )fabs(intersection->magnitude);
+        *global_magnitude_threshold = (r32)fabs(intersection->magnitude);
         return_color->value         = entity->material.color.value;
     }
 }
 
-__UE_inline__ static void
+static void
 TraceEntityArray(const Ray* restrict const ray,
                  _mut_ RayIntersection* restrict const intersection,
                  _mut_ r32* restrict const global_magnitude_threshold,
@@ -334,7 +340,8 @@ TraceEntityArray(const Ray* restrict const ray,
     for (size_t entity_index = 0; entity_index < num_entitys; entity_index++)
     {
         IntersectEntity(ray, &entity_arr[entity_index], intersection);
-        if (intersection->does_intersect && (intersection->magnitude < closestIntersection.magnitude))
+        if (intersection->does_intersect &&
+            (intersection->magnitude < closestIntersection.magnitude))
         {
             closestIntersection.does_intersect = true;
             closestIntersection.magnitude      = intersection->magnitude;
@@ -354,7 +361,8 @@ TraceEntityArray(const Ray* restrict const ray,
         }
     }
 
-    if (closestIntersection.does_intersect && fabs(closestIntersection.magnitude) < fabs(*global_magnitude_threshold))
+    if (closestIntersection.does_intersect &&
+        fabs(closestIntersection.magnitude) < fabs(*global_magnitude_threshold))
     {
         intersection->does_intersect = true;
     }
@@ -364,7 +372,7 @@ TraceEntityArray(const Ray* restrict const ray,
     //
     ReflectRays(intersection, return_color, entity_arr, num_entitys, intersected_entity_index);
 //
-#endif // __UE_AA__reflections
+#endif // __UE_AA__reflections \
        //
 }
 
@@ -375,26 +383,44 @@ CreateRandomEntities(size_t num_entitys)
     for (size_t entity_index = 0; entity_index < num_entitys; entity_index++)
     {
         // Positions
-        entity_arr[entity_index].position.x =
-          NormalizeToRange(( r32 )TOLERANCE, (r32)(~( u32 )0), -1.0f, +1.0f, ( r32 )XorShift32());
+        entity_arr[entity_index].position.x = NormalizeToRange((r32)TOLERANCE,
+                                                               (r32)(~(u32)0),
+                                                               -1.0f,
+                                                               +1.0f,
+                                                               (r32)XorShift32());
 
-        entity_arr[entity_index].position.y =
-          NormalizeToRange(( r32 )TOLERANCE, (r32)(~( u32 )0), -1.0f, +1.0f, ( r32 )XorShift32());
+        entity_arr[entity_index].position.y = NormalizeToRange((r32)TOLERANCE,
+                                                               (r32)(~(u32)0),
+                                                               -1.0f,
+                                                               +1.0f,
+                                                               (r32)XorShift32());
 
-        entity_arr[entity_index].position.z =
-          NormalizeToRange(( r32 )TOLERANCE, (r32)(~( u32 )0), -2.0f, -1.0f, ( r32 )XorShift32());
+        entity_arr[entity_index].position.z = NormalizeToRange((r32)TOLERANCE,
+                                                               (r32)(~(u32)0),
+                                                               -2.0f,
+                                                               -1.0f,
+                                                               (r32)XorShift32());
 
         // Radius
-        entity_arr[entity_index].radius =
-          NormalizeToRange(( r32 )TOLERANCE, (r32)(~( u32 )0), 0.15f, 0.30f, ( r32 )XorShift32());
+        entity_arr[entity_index].radius = NormalizeToRange((r32)TOLERANCE,
+                                                           (r32)(~(u32)0),
+                                                           0.15f,
+                                                           0.30f,
+                                                           (r32)XorShift32());
 
         // Materials
-        entity_arr[entity_index].material.color.channel.R =
-          BindValueTo8BitColorChannel(( r32 )TOLERANCE, (r32)(~( u32 )0), ( r32 )XorShift32());
-        entity_arr[entity_index].material.color.channel.G =
-          BindValueTo8BitColorChannel(( r32 )TOLERANCE, (r32)(~( u32 )0), ( r32 )XorShift32());
-        entity_arr[entity_index].material.color.channel.B =
-          BindValueTo8BitColorChannel(( r32 )TOLERANCE, (r32)(~( u32 )0), ( r32 )XorShift32());
+        entity_arr[entity_index].material.color.channel.R = BindValueTo8BitColorChannel(
+          (r32)TOLERANCE,
+          (r32)(~(u32)0),
+          (r32)XorShift32());
+        entity_arr[entity_index].material.color.channel.G = BindValueTo8BitColorChannel(
+          (r32)TOLERANCE,
+          (r32)(~(u32)0),
+          (r32)XorShift32());
+        entity_arr[entity_index].material.color.channel.B = BindValueTo8BitColorChannel(
+          (r32)TOLERANCE,
+          (r32)(~(u32)0),
+          (r32)XorShift32());
 //
 #if __UE_debug__ == 1
         //

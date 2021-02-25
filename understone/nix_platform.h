@@ -2,12 +2,12 @@
 #define __UE_NIX_PLATFORM_H__
 
 #include <assert.h>
-#include <event_tools.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <type_tools.h>
-#include <uDynamicArray.h>
-#include <uString.h>
+#include <understone/event_tools.h>
+#include <understone/type_tools.h>
+#include <understone/uDynamicArray.h>
+#include <understone/uString.h>
 
 uSystemEvent
 uNixCreateWindow()

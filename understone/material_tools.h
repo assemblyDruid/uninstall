@@ -22,7 +22,8 @@ typedef struct
 } Material;
 
 static void
-GetDefaultMaterialByClass(_mut_ Material* restrict const material, const MaterialClass material_class)
+GetDefaultMaterialByClass(_mut_ Material* restrict const material,
+                          const MaterialClass            material_class)
 {
     __UE_ASSERT__(material);
 
@@ -31,26 +32,26 @@ GetDefaultMaterialByClass(_mut_ Material* restrict const material, const Materia
         case MATERIAL_CLASS_DIFFUSE:
         {
             material->max_generated_rays     = 3;
-            material->absorbtion_coefficient = ( r32 )0.85;
+            material->absorbtion_coefficient = (r32)0.85;
             break;
         }
         case MATERIAL_CLASS_METAL:
         {
             material->max_generated_rays     = 3;
-            material->absorbtion_coefficient = ( r32 )0.05;
+            material->absorbtion_coefficient = (r32)0.05;
             break;
         }
 
         case MATERIAL_CLASS_N__UE_ON__E:
         {
             material->max_generated_rays     = 0;
-            material->absorbtion_coefficient = ( r32 )0.0f;
+            material->absorbtion_coefficient = (r32)0.0f;
             break;
         }
     }
 }
 
-__UE_inline__ static void
+static void
 BlendColorByMaterial(const Material* restrict const    material,
                      const Color32_RGB* restrict const input_color,
                      _mut_ Color32_RGB* restrict const return_color)

@@ -3,6 +3,7 @@
 
 #include "macro_tools.h"
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -33,31 +34,29 @@ typedef struct
 //
 // Endian types
 //
-union
-{
-    s16 dword;
-    s8  word[2];
-} uEndiannessUnion;
+// [ cfarvin::RESTORE ] Unused
+/* static union */
+/* { */
+/*     s16 dword; */
+/*     s8  word[2]; */
+/* } uEndiannessUnion; */
 
-typedef enum
-{
-    uLITTLE_ENDIAN = 0,
-    uBIG_ENDIAN    = 1
-} uEndianness;
+/* typedef enum */
+/* { */
+/*     uLITTLE_ENDIAN = 0, */
+/*     uBIG_ENDIAN    = 1 */
+/* } uEndianness; */
 
-// [ cfarvin::RESTORE ] Unused fn warning
-/* uEndianness uSystemEndianness; */
-/* static void  */
+/* uEndianness */
 /* uDetermineSystemEndianness() */
 /* { */
 /*     uEndiannessUnion.dword = 1; */
 /*     if (uEndiannessUnion.word[0]) */
 /*     { */
-/*         uSystemEndianness = uLITTLE_ENDIAN; */
-/*         return; */
+/*         return uLITTLE_ENDIAN; */
 /*     } */
 
-/*     uSystemEndianness = uBIG_ENDIAN; */
+/*     return uBIG_ENDIAN; */
 /* } */
 
 //
@@ -76,17 +75,15 @@ typedef struct
 typedef union
 {
     // Little Endian Storage
-    // Access via "channel" macro
     struct
     {
         u8 A;
         u8 R;
         u8 G;
         u8 B;
-    } MSB_channel;
+    } channel;
 
     // Big Endian Storage
-    // Access via "channel" macro
     struct
     {
         u8 B;

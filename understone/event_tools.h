@@ -3,7 +3,6 @@
 
 #include "type_tools.h"
 
-// [ cfarvin::REMOVE ] Remove stdio.h
 #include <stdio.h>
 
 typedef enum
@@ -13,15 +12,13 @@ typedef enum
     uEventResize,
 } uSystemEvent;
 
-// Center of the screen is (0, 0, 0)
+// Center of the screen is (0, 0, 0).
 typedef struct
 {
     u16 x;
     u16 y;
 } uMousePos;
-uMousePos mouse_pos;
 
-int64_t input_state;
 #define uKEY_A             (1ULL << 0)
 #define uKEY_B             (1ULL << 1)
 #define uKEY_C             (1ULL << 2)
@@ -70,30 +67,13 @@ int64_t input_state;
 #define uMouse_left        (1ULL << 45)
 #define uMouse_middle      (1ULL << 46)
 
-// [ cfarvin::REMOVE ] Unused in nix for now
-#if _WIN32
-__UE_inline__ static void
-uSetInputPressed(const uint64_t key)
-{
-    input_state |= key;
-}
-#endif // _WIN32
+void
+uSetInputPressed(const u64 key, u64* const input_state);
 
-// [ cfarvin::REMOVE ] Unused in nix for now
-#if _WIN32
+void
+uSetInputReleased(const u64 key, u64* const input_state);
 
-__UE_inline__ static void
-uSetInputReleased(const uint64_t key)
-{
-    input_state &= ~key;
-}
-#endif // _WIN32
-
-// [ cfarvin::RESTORE ] Unused fn warning
-/* __UE_inline__ static uint64_t */
-/* uGetInputPressed(const  uint64_t key) */
-/* { */
-/*     return input_state & key; */
-/* } */
+u64
+uGetInputPressed(const u64 key, u64* const input_state);
 
 #endif // __event_tools__

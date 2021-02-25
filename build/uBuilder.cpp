@@ -8,12 +8,63 @@
 //
 // clang-format off
 //
-// Reccommended compilation invocations for common compilers (may need to update -std=c++<version> and -o <executable_path> for OS executable extensions):
-// [ clang::release ]: clang-format -i uBuilder.cpp && clang++ -Wall -Werror -pedantic -g0 -O3 --optimize -Ofast3 -std=c++20 uBuilder.cpp -o ../bin/uBuilder
-// [ clang::debug   ]: clang-format -i uBuilder.cpp && clang++ -Wall -Werror -pedantic -std=c++20 -g3 -O0 uBuilder.cpp -o ../bin/uBuilder
+// The following are reccommended compilation invocations for common compilers.
+// Note: you may need to update -std=c++<version> and -o <executable_path> for OS executable extensions.
+//
+// [ clang::release ]:
+// clang-format -i uBuilder.cpp && clang++ -Wall -Werror -pedantic -g0 -O3 --optimize -Ofast3 -std=c++20 uBuilder.cpp -o ../bin/uBuilder
+//
+// [ clang::debug   ]:
+// clang-format -i uBuilder.cpp && clang++ -Wall -Werror -pedantic -std=c++20 -g3 -O0 uBuilder.cpp -o ../bin/uBuilder
 //
 // clang-format on
 //
+
+// [ cfarvin::TODO ] Feature
+//
+// It should be possible to search both the code base and the Vulkan header for uses of functions
+// that have been promoted from their *KHR versions to being part of the Vulkan core. We could emit
+// warnings when, for example, the codebase uses "vkGetPhysicalDeviceFeatures2KHR" when
+// "vkGetPhysicalDeviceFeatures2" has been added to the version of the Vulkan header on any machine
+// which compiles the Understone Engine. It would be quite a bit of string parsing: every line of
+// every file would have to be checked for "vk", and if found, would then need to determine if that
+// element ends in "KHR". If so, we would have to then copare that line against functions defined in
+// the vulkan header, which could be parsed ahead of time to produce a map of the KHR functions
+// which have been moved to the Vulkan core. These functions are typedef'ed in the Vulkan header as
+// so:
+//
+// typedef vkGetPhysicalDeviceFeatures2 vkGetPhiscalDeviceFeatures2KHR
+//
+// Given the expense of all these string comparisons, it would likely be best to have such a feature
+// enabled only by a flag, or only for release builds.
+
+// [ cfarvin::TODO ] Source inclusion system.
+//
+// We changed the Understone Engine from using single file headers for different toolsets into the
+// more traditional header/source pairing style. In the old system, we included all of the headers
+// for the Understone Engine in every project. This was easy because extra headers make no difference
+// if none of the information in them is used except for marginally longer compilation times due to
+// the file inclusion. It was a good interim solution, but after the change to have traditional .h and
+// .c files, it was necessary to ensure that all projects receive compiler invocations that include the
+// Understone source (.c) files. Since some files are meant to be OS specific, including them all does not
+// work as well. Additionally, we're in a stage where things are being massively refactored, and making
+// major changes to the build system isn't viable with the state of the code.
+//
+// Ideally, this build system would be written in C and not C++, since this is another change that we've made.
+// As for the source inclusion system, we can lean on the .uProject files to have some kind of source file
+// specifier, like @Source "my_source_file.c", similar to the other specifiers in .uProject files. As a first
+// iteration solution to the issue of having different source files used for different OS's, variations of
+// the keyword can be used as so: "@SourceWin32" and "@SourceNix", etc.
+//
+// A secondary issue that presents itself on account of no longer having all code in header files for the
+// Understone core functions is that we are no longer able to add the -Wno-unused-function flag only to the
+// Understone project. This is because, for now, we're choosing to go ahead with the inclusion of any ".c"
+// in the Understone directory for every project with a focus on Win32.
+//
+// So, to consider this issue completely solved, the following would need to happen:
+//    1. The build tool is written in C.
+//    2. The build tool allows for @Source/@SourceWin32/@SourceNix/etc in the .uProject files.
+//    3. The build tool allows for _only_ the Understone project to have the -Wno-unused-function flag by default.
 
 #include <filesystem>
 #include <fstream>
@@ -68,12 +119,13 @@ const std::string           kUnderstoneEngineProjectName         = "Understone E
 const std::filesystem::path kCurrentDirectory                    = std::filesystem::current_path();
 const std::set<std::string> kHeaderFileTypes                     = { ".h", ".hpp" };
 const std::set<std::string> kSourceFileTypes                     = { ".c", ".cpp", ".cc" };
-const std::set<std::string> kShaderFileTypes                     = { ".vert", ".frag", ".geom", ".tess" };
+const std::set<std::string> kShaderFileTypes = { ".vert", ".frag", ".geom", ".tess" };
 
 std::string understone_root_dir = "";
 
-using CommandLineArguments       = std::vector<std::string>;
-using CommandLineArgumentOptions = std::vector<std::pair<std::string /*arg*/, std::string /*desc*/> >;
+using CommandLineArguments = std::vector<std::string>;
+using CommandLineArgumentOptions =
+  std::vector<std::pair<std::string /*arg*/, std::string /*desc*/> >;
 const CommandLineArgumentOptions kAllCommandLineArgs = {
     { CLI_HELP_STR, "Shows this message." },
     { CLI_CLANGCL_STR, "Compile using clang-cl" },
@@ -108,7 +160,8 @@ enum class CompilationFlags
 };
 using UserCompilationFlags                                = std::map<CompilationFlags, bool>;
 const UserCompilationFlags default_user_compilation_flags = { { CompilationFlags::kDebug, true },
-                                                              { CompilationFlags::kRelease, false } };
+                                                              { CompilationFlags::kRelease,
+                                                                false } };
 
 enum class ShaderType
 {
@@ -144,8 +197,10 @@ enum class CompilationOptions
     kVulkanSdkPath = 0,
     kCount
 };
-using UserCompilationOptions                                  = std::map<CompilationOptions, std::string>;
-const UserCompilationOptions default_user_compilation_options = { { CompilationOptions::kVulkanSdkPath, "" } };
+using UserCompilationOptions = std::map<CompilationOptions, std::string>;
+const UserCompilationOptions default_user_compilation_options = {
+    { CompilationOptions::kVulkanSdkPath, "" }
+};
 
 enum class BuildFlags
 {
@@ -179,7 +234,8 @@ ValidateUserCompilationFlags(const UserCompilationFlags& user_compilation_flags,
 {
     if (user_compilation_flags.size() != static_cast<size_t>(CompilationFlags::kCount))
     {
-        error_message << "  UserCompilationFlags -- expected size: " << static_cast<size_t>(CompilationFlags::kCount)
+        error_message << "  UserCompilationFlags -- expected size: "
+                      << static_cast<size_t>(CompilationFlags::kCount)
                       << ", actual size: " << user_compilation_flags.size() << std::endl;
         errors_logged++;
 
@@ -208,11 +264,14 @@ ValidateUserCompilationOptions(const UserCompilationOptions& user_compilation_op
 }
 
 bool
-ValidateUserBuildFlags(const UserBuildFlags& user_build_flags, std::stringstream& error_message, size_t& errors_logged)
+ValidateUserBuildFlags(const UserBuildFlags& user_build_flags,
+                       std::stringstream&    error_message,
+                       size_t&               errors_logged)
 {
     if (user_build_flags.size() != static_cast<size_t>(BuildFlags::kCount))
     {
-        error_message << "  UserBuildFlags -- expected size: " << static_cast<size_t>(BuildFlags::kCount)
+        error_message << "  UserBuildFlags -- expected size: "
+                      << static_cast<size_t>(BuildFlags::kCount)
                       << ", actual size: " << user_build_flags.size() << std::endl;
         errors_logged++;
 
@@ -365,7 +424,7 @@ _API_TO_POSIX_PATH(std::string path)
 const std::string
 GetCodeFormatInvocation(const Project& project)
 {
-    const std::string invocation_defaults = "clang-format -i -Werror --sort-includes ";
+    const std::string invocation_defaults = "clang-format -i -Werror --sort-includes -style=file ";
 
     static bool clang_format_available = false;
     if (!clang_format_available)
@@ -386,10 +445,9 @@ GetCodeFormatInvocation(const Project& project)
                     "system environment path.",
                     OutputType::kError);
 #if __linux__
-            PrintLn("Note: Ceate a symlink in /usr/bin/ for 'clang-format' to point to your current version. The clang "
-                    "and clang++ "
-                    "compilers are automatically symlinked to their current versions on most installations, but not "
-                    "clang-format.",
+            PrintLn("Note: Ceate a symlink in /usr/bin/ for 'clang-format' to point to your "
+                    "current version. The clang and clang++ compilers are automatically symlinked "
+                    "to their current versions on most installations, but not clang-format.",
                     OutputType::kError);
 #endif // __linux__
             return "";
@@ -416,7 +474,8 @@ GetCodeFormatInvocation(const Project& project)
         }
         else
         {
-            PrintLn("Unable to find file for code formatting: " + baked_shader.second.auto_gen_output_file_path,
+            PrintLn("Unable to find file for code formatting: " +
+                      baked_shader.second.auto_gen_output_file_path,
                     OutputType::kError);
             return "";
         }
@@ -457,7 +516,9 @@ class CompilerInvocationGenerator
                                 const UserCompilationOptions& user_compilation_options,
                                 const UserBuildFlags&         user_build_flags) // mutable
     {
-        if (!UserArgumentSanityCheck(user_compilation_flags, user_compilation_options, user_build_flags))
+        if (!UserArgumentSanityCheck(user_compilation_flags,
+                                     user_compilation_options,
+                                     user_build_flags))
         {
             PrintLn("Failed user argument sanity check. Will not continue with "
                     "compilation invocation generation.",
@@ -478,17 +539,14 @@ class CompilerInvocationGenerator
         std::string ret        = "";
         const auto  invocation = project_source_invocations_.find(project_name);
 
-        // Ignore the main understone project
-        if (project_name != kUnderstoneEngineProjectName)
+        if (invocation == project_source_invocations_.end())
         {
-            if (invocation == project_source_invocations_.end())
-            {
-                PrintLn("Unable to obtain source invocation for project with name " + project_name, OutputType::kError);
-            }
-            else
-            {
-                ret = invocation->second;
-            }
+            PrintLn("Unable to obtain source invocation for project with name " + project_name,
+                    OutputType::kError);
+        }
+        else
+        {
+            ret = invocation->second;
         }
 
         return ret;
@@ -554,11 +612,16 @@ class CompilerInvocationGenerator
         }
     }
 
+    // [ cfarvin::REMOVE ] Source inclusion system.
+    //
+    // When the system is complete, we may not need the understone_project parameter.
+    // It was added to compliment the temporary system.
     void
     GenerateSourceInvocation(const Compiler&               compiler,
                              const UserCompilationFlags&   user_compilation_flags,
                              const UserCompilationOptions& user_compilation_options,
                              const UserBuildFlags&         user_build_flags,
+                             Project&                      understone_project,
                              Project&                      project,
                              const std::string             project_directory)
     {
@@ -568,10 +631,12 @@ class CompilerInvocationGenerator
         }
 
         // Ensure that the engine source directory is in the understone root dir
-        const std::string expected_understone_source_directory = understone_root_dir + '/' + kEngineSourceFolderName;
+        const std::string expected_understone_source_directory = understone_root_dir + '/' +
+                                                                 kEngineSourceFolderName;
         if (!std::filesystem::exists(expected_understone_source_directory))
         {
-            PrintLn("Understone source directory not found. Expected: " + expected_understone_source_directory,
+            PrintLn("Understone source directory not found. Expected: " +
+                      expected_understone_source_directory,
                     OutputType::kError);
             is_ok_ = false;
             return;
@@ -580,8 +645,9 @@ class CompilerInvocationGenerator
         // Ensure that the project directory exists
         if (!std::filesystem::exists(project_directory))
         {
-            PrintLn("Cannot generate source invocation; invalid project directory: " + project_directory,
-                    OutputType::kError);
+            PrintLn(
+              "Cannot generate source invocation; invalid project directory: " + project_directory,
+              OutputType::kError);
             is_ok_ = false;
             return;
         }
@@ -594,9 +660,9 @@ class CompilerInvocationGenerator
                 int            clang_ret_value = -1;
                 PipeReturnType pipe_return     = {};
 #if __linux__
-                pipe_return = RunProcess("clang++ --version > /dev/null 2>&1", "r");
+                pipe_return = RunProcess("clang --version > /dev/null 2>&1", "r");
 #else
-                pipe_return = RunProcess("clang++ --version >nul 2>&1", "r");
+                pipe_return = RunProcess("clang --version >nul 2>&1", "r");
 #endif
                 clang_ret_value = pipe_return.return_code;
                 if (clang_ret_value || !pipe_return.success)
@@ -611,6 +677,7 @@ class CompilerInvocationGenerator
                 GenerateClangInvocation(user_compilation_flags,
                                         user_compilation_options,
                                         user_build_flags,
+                                        understone_project,
                                         project,
                                         project_directory);
                 break;
@@ -638,6 +705,7 @@ class CompilerInvocationGenerator
                 GenerateClangCLInvocation(user_compilation_flags,
                                           user_compilation_options,
                                           user_build_flags,
+                                          understone_project,
                                           project,
                                           project_directory);
 #endif // __linux__
@@ -654,17 +722,41 @@ class CompilerInvocationGenerator
 
   private:
     bool
-    UserArgumentSanityCheck(const UserCompilationFlags&   user_compilation_flags   = default_user_compilation_flags,
-                            const UserCompilationOptions& user_compilation_options = default_user_compilation_options,
-                            const UserBuildFlags&         user_build_flags         = default_user_build_flags)
+    CreateEveryDirectoryInPath(std::filesystem::path input_path)
+    {
+        std::string element_iter_string = "";
+        for (auto element_iter = input_path.begin(); element_iter != input_path.end();
+             ++element_iter)
+        {
+            element_iter_string += element_iter->string() + '/';
+            std::filesystem::path element_iter_path(element_iter_string);
+            if (!std::filesystem::exists(element_iter_path) &&
+                !std::filesystem::create_directory(element_iter_path))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    bool
+    UserArgumentSanityCheck(
+      const UserCompilationFlags&   user_compilation_flags   = default_user_compilation_flags,
+      const UserCompilationOptions& user_compilation_options = default_user_compilation_options,
+      const UserBuildFlags&         user_build_flags         = default_user_build_flags)
     {
         bool              success       = true;
         size_t            errors_logged = 0;
         std::stringstream error_message;
         error_message << "The following arguments have failed the sanity check:" << std::endl;
 
-        success &= ValidateUserCompilationFlags(user_compilation_flags, error_message, errors_logged);
-        success &= ValidateUserCompilationOptions(user_compilation_options, error_message, errors_logged);
+        success &= ValidateUserCompilationFlags(user_compilation_flags,
+                                                error_message,
+                                                errors_logged);
+        success &= ValidateUserCompilationOptions(user_compilation_options,
+                                                  error_message,
+                                                  errors_logged);
         success &= ValidateUserBuildFlags(user_build_flags, error_message, errors_logged);
 
         if (errors_logged || !success)
@@ -689,7 +781,8 @@ class CompilerInvocationGenerator
         std::filesystem::path default_location("C:/VulkanSDK/");
         if (!std::filesystem::exists(default_location))
         {
-            PrintLn("Vulkan does not appear to be installed in the default location.", OutputType::kError);
+            PrintLn("Vulkan does not appear to be installed in the default location.",
+                    OutputType::kError);
             is_ok_ = false;
             return "";
         }
@@ -717,7 +810,8 @@ class CompilerInvocationGenerator
                 // Write the first three numbers to temp_version[0 .. 2]
                 if (dir_name[index] == '.' && index != 0)
                 {
-                    substr_start            = last_dot_location == 0 ? last_dot_location : last_dot_location + 1;
+                    substr_start            = last_dot_location == 0 ? last_dot_location
+                                                                     : last_dot_location + 1;
                     substr_end              = index - substr_start;
                     temp_version[dot_count] = std::stoul(dir_name.substr(substr_start, substr_end));
                     last_dot_location       = index;
@@ -760,11 +854,13 @@ class CompilerInvocationGenerator
             }
         }
 
-        latest_sdk_path = "C:/VulkanSDK/" + std::to_string(version[0]) + "." + std::to_string(version[1]) + "." +
-                          std::to_string(version[2]) + "." + std::to_string(version[3]);
+        latest_sdk_path = "C:/VulkanSDK/" + std::to_string(version[0]) + "." +
+                          std::to_string(version[1]) + "." + std::to_string(version[2]) + "." +
+                          std::to_string(version[3]);
         if (!std::filesystem::exists(latest_sdk_path))
         {
-            PrintLn("Function GetLatestDefaultVulkanSdkPath() returned an invalid path.", OutputType::kError);
+            PrintLn("Function GetLatestDefaultVulkanSdkPath() returned an invalid path.",
+                    OutputType::kError);
             is_ok_ = false;
             return "";
         }
@@ -772,10 +868,15 @@ class CompilerInvocationGenerator
         return latest_sdk_path;
     }
 
+    // [ cfarvin::REMOVE ] Source inclusion system.
+    //
+    // When the system is complete, we may not need the understone_project parameter.
+    // It was added to compliment the temporary system.
     void
     GenerateClangCLInvocation(const UserCompilationFlags&   user_compilation_flags,
                               const UserCompilationOptions& user_compilation_options,
                               const UserBuildFlags&         user_build_flags,
+                              Project&                      understone_project,
                               Project&                      project,
                               const std::string&            project_directory)
     {
@@ -785,30 +886,47 @@ class CompilerInvocationGenerator
             return;
         }
 
-        std::string invocation = "clang-cl -WX -W4 /std:c++latest -Wno-gnu-anonymous-struct -Wno-nested-anon-types "
-                                 "-Wno-gnu-zero-variadic-macro-arguments -Wno-c99-extensions ";
+        // [ cfarvin::REMOVE ] Source inclusion system.
+        //
+        // We've added the -Wno-unused-function flag to all compilations for the short term.
+        std::string invocation =
+          "clang-cl -WX -W4 /std:c++latest -Wno-gnu-anonymous-struct -Wno-nested-anon-types "
+          "-Wno-gnu-zero-variadic-macro-arguments -Wno-c99-extensions -Wno-unused-function ";
+
+        // [ cfarvin::RESTORE ] Source inclusion system.
+        //
+        // Restore this when we improve the source inclusion system.
+        //
+        // Understone engine should ignore the unused function warning.
+        // if (project.project_name == kUnderstoneEngineProjectName)
+        // {
+        //     invocation += "-Wno-unused-function ";
+        // }
 
         // Compilation flags
         std::string compilation_flags_invocation = "";
         {
-            bool              debug_flag     = user_compilation_flags.at(CompilationFlags::kDebug);
-            const std::string debug_string   = "-Od -MTd -Zi -D" + std::string(UNDERSTONE_DEBUG_MACRO_STR) + "#1 ";
+            bool              debug_flag   = user_compilation_flags.at(CompilationFlags::kDebug);
+            const std::string debug_string = "-Od -MTd -Zi -D" +
+                                             std::string(UNDERSTONE_DEBUG_MACRO_STR) + "#1 ";
             const std::string release_string = "-MT -O2 -Ot -Ob2 ";
             debug_flag ? (compilation_flags_invocation += debug_string)
                        : (compilation_flags_invocation += release_string);
         }
 
         // Link Paramters (hard-coded vulkan-1.lib)
-        std::string default_link_parameters =
-          "-link -SUBSYSTEM:CONSOLE -NXCOMPAT -MACHINE:x64 -NODEFAULTLIB:MSVCRTD user32.lib vulkan-1.lib ";
-        std::string vulkan_sdk_path = user_compilation_options.at(CompilationOptions::kVulkanSdkPath);
+        std::string default_link_parameters = "-link -SUBSYSTEM:CONSOLE -NXCOMPAT -MACHINE:x64 "
+                                              "-NODEFAULTLIB:MSVCRTD user32.lib vulkan-1.lib ";
+        std::string vulkan_sdk_path = user_compilation_options.at(
+          CompilationOptions::kVulkanSdkPath);
         if (!vulkan_sdk_path.size())
         {
             std::string latest_vulkan_sdk_path = ToPosixPath(GetLatestDefaultVulkanSdkPathWin32());
             if (!latest_vulkan_sdk_path.size())
             {
-                PrintLn("Unable to locate a Vulkan SDK installation. Please specify the precise path.",
-                        OutputType::kError);
+                PrintLn(
+                  "Unable to locate a Vulkan SDK installation. Please specify the precise path.",
+                  OutputType::kError);
                 is_ok_ &= false;
                 return;
             }
@@ -818,8 +936,9 @@ class CompilerInvocationGenerator
         default_link_parameters += "-LIBPATH:" + vulkan_sdk_path + "/Lib ";
 
         // Understone, Vulkan, and project headers
-        std::string header_directories_invocation =
-          "-I" + understone_root_dir + +" -I" + project_directory + " -I" + vulkan_sdk_path + "/Include ";
+        std::string header_directories_invocation = "-I" + understone_root_dir + +" -I" +
+                                                    project_directory + " -I" + vulkan_sdk_path +
+                                                    "/Include ";
 
         // Source files
         std::string source_files_invocation = "";
@@ -828,51 +947,64 @@ class CompilerInvocationGenerator
             source_files_invocation += (source + " ");
         }
 
+        // [ cfarvin::REMVOE ] Source inclusion system.
+        //
+        // This turned out to be the wrong solution. Likely need to extend the .uProject file system.
+        //
+        // All projects have access to Understone source files.
+        if (project.project_name != kUnderstoneEngineProjectName)
+        {
+            for (const std::string& source : understone_project.source_files)
+            {
+                source_files_invocation += (source + " ");
+            }
+        }
+
         // Compilation options & executable name
         std::string           compilation_options_invocation = "";
-        std::filesystem::path bin_directory(understone_root_dir + "/bin/" + project.executable_output_subfolder);
-        const std::string     executable_name =
-          ToPosixPath(bin_directory.string()) + '/' + project.executable_name + ".exe ";
+        std::filesystem::path bin_directory(understone_root_dir + "/bin/" +
+                                            project.executable_output_subfolder);
+        const std::string     executable_name = ToPosixPath(bin_directory.string()) + '/' +
+                                            project.executable_name + ".exe ";
 
-        // Ensure that each folder along the provided path exists
-        std::string element_iter_string = "";
-        for (auto element_iter = bin_directory.begin(); element_iter != bin_directory.end(); ++element_iter)
+        if (!CreateEveryDirectoryInPath(bin_directory))
         {
-            element_iter_string += element_iter->string();
-            std::filesystem::path element_iter_path(element_iter_string);
-            if (!std::filesystem::exists(element_iter_path) && !std::filesystem::create_directory(element_iter_path))
-            {
-                PrintLn("Unable to find or create the output directory specified by the project: " +
-                          project.project_name,
-                        OutputType::kError);
-                PrintLn("  Output folder: " + bin_directory.string(), OutputType::kError);
-                PrintLn("  Executable name: " + executable_name, OutputType::kError);
-                PrintLn("  Failed attempting to create folder: " + element_iter_string, OutputType::kError);
+            PrintLn("Unable to find or create the output directory specified by the project: " +
+                      project.project_name,
+                    OutputType::kError);
+            PrintLn("  Output folder: " + bin_directory.string(), OutputType::kError);
+            PrintLn("  Executable name: " + executable_name, OutputType::kError);
 
-                is_ok_ &= false;
-                return;
-            }
+            is_ok_ &= false;
+            return;
         }
 
         compilation_options_invocation += "-Fe" + executable_name + " ";
 
-        // Link parameters
+        // Add link parameters to main invocation.
         compilation_options_invocation += default_link_parameters;
 
         // Add this entry to the invocation structure
         if (is_ok_)
         {
-            const std::string project_invocation = invocation + compilation_flags_invocation + source_files_invocation +
-                                                   header_directories_invocation + compilation_options_invocation;
+            const std::string project_invocation = invocation + compilation_flags_invocation +
+                                                   source_files_invocation +
+                                                   header_directories_invocation +
+                                                   compilation_options_invocation;
             project_source_invocations_[project.project_name] = project_invocation;
         }
     }
 #endif // _WIN32
 
+    // [ cfarvin::REMOVE ] Source inclusion system.
+    //
+    // When the system is complete, we may not need the understone_project parameter.
+    // It was added to compliment the temporary system.
     void
     GenerateClangInvocation(const UserCompilationFlags&   user_compilation_flags,
                             const UserCompilationOptions& user_compilation_options,
                             const UserBuildFlags&         user_build_flags,
+                            Project&                      understone_project,
                             Project&                      project,
                             const std::string&            project_directory)
     {
@@ -881,33 +1013,49 @@ class CompilerInvocationGenerator
         {
             return;
         }
-
+        // [ cfarvin::REMOVE ] Source inclusion system.
+        //
+        // We've added the -Wno-unused-function flag to all compilations for the short term.
         std::string invocation =
-          "clang++ -Wall -Werror -pedantic -std=c++20 "
+          "clang -Wall -Werror -pedantic "
           "-Wno-gnu-anonymous-struct -Wno-nested-anon-types -Wno-gnu-zero-variadic-macro-arguments "
-          "-Wno-c99-extensions ";
+          "-Wno-c99-extensions -Wno-unused-function ";
+
+        // [ cfarvin::RESTORE ] Source inclusion system.
+        //
+        // Restore this when we improve the source inclusion system.
+        //
+        // Understone engine should ignore the unused function warning.
+        // if (project.project_name == kUnderstoneEngineProjectName)
+        // {
+        //     invocation += "-Wno-unused-function ";
+        // }
 
         // Compilation flags
         std::string compilation_flags_invocation = "";
         {
-            bool              debug_flag     = user_compilation_flags.at(CompilationFlags::kDebug);
-            const std::string debug_string   = "-g3 -O0 -D" + std::string(UNDERSTONE_DEBUG_MACRO_STR) + "=1 ";
+            bool              debug_flag   = user_compilation_flags.at(CompilationFlags::kDebug);
+            const std::string debug_string = "-g3 -O0 -D" +
+                                             std::string(UNDERSTONE_DEBUG_MACRO_STR) + "=1 ";
             const std::string release_string = "-g0 -O3 -Ofast3 ";
             debug_flag ? (compilation_flags_invocation += debug_string)
                        : (compilation_flags_invocation += release_string);
         }
 
         // Link Paramters (hard-coded vulkan-1.lib)
-        std::string vulkan_sdk_path = user_compilation_options.at(CompilationOptions::kVulkanSdkPath);
+        std::string vulkan_sdk_path = user_compilation_options.at(
+          CompilationOptions::kVulkanSdkPath);
         std::string link_parameters = "-L"; // Note: no space, will be appended to
         if (!vulkan_sdk_path.size())
         {
 #if _WIN32
-            const std::string latest_vulkan_sdk_path = ToPosixPath(GetLatestDefaultVulkanSdkPathWin32());
+            const std::string latest_vulkan_sdk_path = ToPosixPath(
+              GetLatestDefaultVulkanSdkPathWin32());
             if (!latest_vulkan_sdk_path.size())
             {
-                PrintLn("Unable to locate a Vulkan SDK installation. Please specify the precise path.",
-                        OutputType::kError);
+                PrintLn(
+                  "Unable to locate a Vulkan SDK installation. Please specify the precise path.",
+                  OutputType::kError);
                 is_ok_ &= false;
                 return;
             }
@@ -920,8 +1068,9 @@ class CompilerInvocationGenerator
         }
 
         // Understone, Vulkan, and project headers
-        std::string header_directories_invocation =
-          "-I" + understone_root_dir + +" -I" + project_directory + " -I" + vulkan_sdk_path + "/Include ";
+        std::string header_directories_invocation = "-I" + understone_root_dir + +" -I" +
+                                                    project_directory + " -I" + vulkan_sdk_path +
+                                                    "/Include ";
 
         // Source files
         std::string source_files_invocation = "";
@@ -930,29 +1079,36 @@ class CompilerInvocationGenerator
             source_files_invocation += (source + " ");
         }
 
+        // [ cfarvin::REMVOE ] Source inclusion system.
+        //
+        // This turned out to be the wrong solution. Likely need to extend the .uProject file system.
+        //
+        // All projects have access to Understone source files.
+        if (project.project_name != kUnderstoneEngineProjectName)
+        {
+            for (const std::string& source : understone_project.source_files)
+            {
+                source_files_invocation += (source + " ");
+            }
+        }
+
         // Compilation options & executaable name
         std::string           compilation_options_invocation = "";
-        std::filesystem::path bin_directory(understone_root_dir + "/bin/" + project.executable_output_subfolder);
-        std::string           executable_name = ToPosixPath(bin_directory.string()) + '/' + project.executable_name;
+        std::filesystem::path bin_directory(understone_root_dir + "/bin/" +
+                                            project.executable_output_subfolder);
+        std::string           executable_name = ToPosixPath(bin_directory.string()) + '/' +
+                                      project.executable_name;
 
-        // Ensure that each folder along the provided path exists
-        std::string element_iter_string = "";
-        for (auto element_iter = bin_directory.begin(); element_iter != bin_directory.end(); ++element_iter)
+        if (!CreateEveryDirectoryInPath(bin_directory))
         {
-            element_iter_string += element_iter->string();
-            std::filesystem::path element_iter_path(element_iter_string);
-            if (!std::filesystem::exists(element_iter_path) && !std::filesystem::create_directory(element_iter_path))
-            {
-                PrintLn("Unable to find or create the output directory specified by the project: " +
-                          project.project_name,
-                        OutputType::kError);
-                PrintLn("  Output folder: " + bin_directory.string(), OutputType::kError);
-                PrintLn("  Executable name: " + executable_name, OutputType::kError);
-                PrintLn("  Failed attempting to create folder: " + element_iter_string, OutputType::kError);
+            PrintLn("Unable to find or create the output directory specified by the project: " +
+                      project.project_name,
+                    OutputType::kError);
+            PrintLn("  Output folder: " + bin_directory.string(), OutputType::kError);
+            PrintLn("  Executable name: " + executable_name, OutputType::kError);
 
-                is_ok_ &= false;
-                return;
-            }
+            is_ok_ &= false;
+            return;
         }
 
         compilation_options_invocation += "-o ";
@@ -961,18 +1117,23 @@ class CompilerInvocationGenerator
 #else
         compilation_options_invocation += executable_name + " ";
 #endif
+
+        // Add link parameters to main invocation.
         compilation_options_invocation += link_parameters;
 
         if (is_ok_)
         {
-            const std::string project_invocation = invocation + compilation_flags_invocation + source_files_invocation +
-                                                   header_directories_invocation + compilation_options_invocation;
+            const std::string project_invocation = invocation + compilation_flags_invocation +
+                                                   source_files_invocation +
+                                                   header_directories_invocation +
+                                                   compilation_options_invocation;
             project_source_invocations_[project.project_name] = project_invocation;
         }
     }
 
     void
-    GenerateGlslcInvocation(const UserCompilationFlags& user_compilation_flags, ProjectMap& projects)
+    GenerateGlslcInvocation(const UserCompilationFlags& user_compilation_flags,
+                            ProjectMap&                 projects)
     {
         if (!is_ok_)
         {
@@ -992,38 +1153,44 @@ class CompilerInvocationGenerator
 
         for (auto& project : projects)
         {
-            // Do not generate shader compilation invocation if no root shader directory was specified
+            // Do not generate shader compilation invocation if no root shader directory was
+            // specified
             if (project.second.root_shader_directory.empty())
             {
                 continue;
             }
 
             // Ensure that the project directory is valid
-            if (!std::filesystem::exists(project.first) || !std::filesystem::is_directory(project.first))
+            if (!std::filesystem::exists(project.first) ||
+                !std::filesystem::is_directory(project.first))
             {
-                PrintLn("Project directory invalid for project: " + project.second.project_name, OutputType::kError);
+                PrintLn("Project directory invalid for project: " + project.second.project_name,
+                        OutputType::kError);
                 is_ok_ = false;
                 return;
             }
 
             // Ensure that the spir-v output directory is valid
-            const std::string spirv_output_directory =
-              ToPosixPath(project.first) + '/' + project.second.root_shader_directory + "/bin";
+            const std::string spirv_output_directory = ToPosixPath(project.first) + '/' +
+                                                       project.second.root_shader_directory +
+                                                       "/bin";
             std::filesystem::path spirv_output_directory_path(spirv_output_directory);
             if (!std::filesystem::exists(spirv_output_directory_path) &&
                 !std::filesystem::create_directory(spirv_output_directory_path))
             {
-                PrintLn("Unable to create shader output directory for project: " + project.second.project_name,
+                PrintLn("Unable to create shader output directory for project: " +
+                          project.second.project_name,
                         OutputType::kError);
-                PrintLn("  Specified shader output directory  " + spirv_output_directory_path.string(),
-                        OutputType::kError);
+                PrintLn(
+                  "  Specified shader output directory  " + spirv_output_directory_path.string(),
+                  OutputType::kError);
                 is_ok_ = false;
                 return;
             }
 
-            // We expect the baked_shader_info.shader_path field to be filled in when the initial directory was scanned.
-            // Now, we will pre-fill the spir-v output file information generated here, assuming that the compilation
-            // succeeds.
+            // We expect the baked_shader_info.shader_path field to be filled in when the initial
+            // directory was scanned. Now, we will pre-fill the spir-v output file information
+            // generated here, assuming that the compilation succeeds.
             bool use_logical_and = false;
             for (auto& shader_info : project.second.baked_shader_map)
             {
@@ -1032,7 +1199,8 @@ class CompilerInvocationGenerator
                 // Ensure that the shader path is valid
                 if (!shader_path.size() || !std::filesystem::exists(shader_info.first))
                 {
-                    PrintLn("Cannot generate compilation invocation for invalid shader file: " + shader_path,
+                    PrintLn("Cannot generate compilation invocation for invalid shader file: " +
+                              shader_path,
                             OutputType::kError);
                     is_ok_ = false;
                     return;
@@ -1050,11 +1218,14 @@ class CompilerInvocationGenerator
                 invocation += shader_path + " ";
 
                 // Output directory
-                const std::string original_file_name = std::filesystem::path(shader_info.first).filename().string();
-                const std::string original_extension = std::filesystem::path(shader_info.first).extension().string();
+                const std::string original_file_name =
+                  std::filesystem::path(shader_info.first).filename().string();
+                const std::string original_extension =
+                  std::filesystem::path(shader_info.first).extension().string();
                 const std::string spirv_file_name =
-                  original_file_name.substr(0, original_file_name.size() - original_extension.size()) + "_" +
-                  original_extension.substr(1, original_extension.size()) + ".spv";
+                  original_file_name.substr(0,
+                                            original_file_name.size() - original_extension.size()) +
+                  "_" + original_extension.substr(1, original_extension.size()) + ".spv";
                 const std::string spirv_full_path = spirv_output_directory + '/' + spirv_file_name;
 
                 // Complete invocation
@@ -1073,13 +1244,14 @@ class CompilerInvocationGenerator
         }
     }
 
-    bool                                                                              is_ok_ = true;
-    std::map<std::string /*project name*/, std::string /*project source invocation*/> project_source_invocations_ = {};
-    std::map<std::string /*project name*/, std::string /*project shader invocation*/> project_shader_invocations_ = {};
+    bool is_ok_ = true;
+    std::map<std::string /*project name*/, std::string /*project source invocation*/>
+      project_source_invocations_ = {};
+    std::map<std::string /*project name*/, std::string /*project shader invocation*/>
+      project_shader_invocations_ = {};
 }; // class CompilerInvocationGenerator
 
-// Look along the current working directory path for the root Understone
-// directory.
+// Look along the current working directory path for the root Understone directory.
 const std::string
 DetermineUnderstoneRootDirectory()
 {
@@ -1110,21 +1282,24 @@ DetermineUnderstoneRootDirectory()
             // Search directory contents for requried files
             try
             {
-                for (const auto& subdir_contents : std::filesystem::directory_iterator(dir_contents))
+                for (const auto& subdir_contents :
+                     std::filesystem::directory_iterator(dir_contents))
                 {
                     // Only test (sub)directories
                     std::filesystem::perms dir_permissions = subdir_contents.status().permissions();
                     if (!subdir_contents.is_directory() ||
-                        ((dir_permissions & std::filesystem::perms::others_all) == std::filesystem::perms::none))
+                        ((dir_permissions & std::filesystem::perms::others_all) ==
+                         std::filesystem::perms::none))
                     {
                         continue;
                     }
 
-                    const std::string expected_path       = ToPosixPath(subdir_contents.path().string());
-                    const std::string build_path          = expected_path + '/' + kBuildFolderName;
-                    const std::string source_path         = expected_path + '/' + kEngineSourceFolderName;
+                    const std::string expected_path = ToPosixPath(subdir_contents.path().string());
+                    const std::string build_path    = expected_path + '/' + kBuildFolderName;
+                    const std::string source_path   = expected_path + '/' + kEngineSourceFolderName;
                     const std::string source_project_file = source_path + '/' + ".uProject";
-                    if (std::filesystem::exists(build_path) && std::filesystem::exists(source_path) &&
+                    if (std::filesystem::exists(build_path) &&
+                        std::filesystem::exists(source_path) &&
                         std::filesystem::exists(source_project_file))
                     {
                         root_understone_dir_found = true;
@@ -1146,8 +1321,9 @@ DetermineUnderstoneRootDirectory()
 
         if (path_element != kCurrentDirectory.end())
         {
-            partial_path =
-              kCurrentDirectory.string().substr(0, kCurrentDirectory.string().find(path_element->string()));
+            partial_path = kCurrentDirectory.string().substr(
+              0,
+              kCurrentDirectory.string().find(path_element->string()));
         }
         path_element--;
     } while (path_element != kCurrentDirectory.begin());
@@ -1160,7 +1336,8 @@ ParseShaderHeader(const std::filesystem::path& project_item_path,
                   std::set<std::string>&       unique_shader_names,
                   BakedShaderMap&              baked_shader_map)
 {
-    const std::string shader_path = ToPosixPath(project_item_path.lexically_relative(kCurrentDirectory).string());
+    const std::string shader_path = ToPosixPath(
+      project_item_path.lexically_relative(kCurrentDirectory).string());
     if (!std::filesystem::exists(shader_path) || !std::filesystem::is_regular_file(shader_path))
     {
         PrintLn("Cannot parse shader header; invalid file: " + shader_path, OutputType::kError);
@@ -1189,15 +1366,17 @@ ParseShaderHeader(const std::filesystem::path& project_item_path,
             string_find_pos = file_stream_line.find(kShaderNameId);
             if (string_find_pos != std::string::npos)
             {
-                std::string temp_shader_name =
-                  file_stream_line.substr((string_find_pos + kShaderNameId.size() + 1), file_stream_line.size());
+                std::string temp_shader_name = file_stream_line.substr(
+                  (string_find_pos + kShaderNameId.size() + 1),
+                  file_stream_line.size());
                 TrimWhiteSpaceAndQuotes(temp_shader_name);
 
                 const auto set_insert_return = unique_shader_names.insert(temp_shader_name);
                 if (!set_insert_return.second)
                 {
                     std::string duplicate_shader_name_error =
-                      "The shader at " + shader_path + " has " + kShaderNameId + " \"" + temp_shader_name +
+                      "The shader at " + shader_path + " has " + kShaderNameId + " \"" +
+                      temp_shader_name +
                       "\", which already exists. Shaders must have unique names.";
                     PrintLn(duplicate_shader_name_error, OutputType::kError);
                     return false;
@@ -1212,8 +1391,9 @@ ParseShaderHeader(const std::filesystem::path& project_item_path,
             string_find_pos = file_stream_line.find(kShaderTypeId);
             if (string_find_pos != std::string::npos)
             {
-                std::string temp_shader_type =
-                  file_stream_line.substr((string_find_pos + kShaderTypeId.size() + 1), file_stream_line.size());
+                std::string temp_shader_type = file_stream_line.substr(
+                  (string_find_pos + kShaderTypeId.size() + 1),
+                  file_stream_line.size());
                 TrimWhiteSpaceAndQuotes(temp_shader_type);
 
                 ShaderType temp_type = StringToShaderType(temp_shader_type);
@@ -1224,7 +1404,8 @@ ParseShaderHeader(const std::filesystem::path& project_item_path,
                 else
                 {
                     std::string shader_type_error_mismatch =
-                      "The shader at " + shader_path + " has an " + kShaderTypeId + " \"" + temp_shader_type +
+                      "The shader at " + shader_path + " has an " + kShaderTypeId + " \"" +
+                      temp_shader_type +
                       "\", which is invalid.\nValid shader names are: " + kVertexTypeString + ", " +
                       kFragmentTypeString;
                     PrintLn(shader_type_error_mismatch, OutputType::kError);
@@ -1238,8 +1419,9 @@ ParseShaderHeader(const std::filesystem::path& project_item_path,
             string_find_pos = file_stream_line.find(kAutoGenFileNameId);
             if (string_find_pos != std::string::npos)
             {
-                std::string temp_auto_gen_file_name =
-                  file_stream_line.substr((string_find_pos + kAutoGenFileNameId.size() + 1), file_stream_line.size());
+                std::string temp_auto_gen_file_name = file_stream_line.substr(
+                  (string_find_pos + kAutoGenFileNameId.size() + 1),
+                  file_stream_line.size());
                 TrimWhiteSpaceAndQuotes(temp_auto_gen_file_name);
 
                 bool   shader_name_is_header_type = false;
@@ -1247,10 +1429,11 @@ ParseShaderHeader(const std::filesystem::path& project_item_path,
                 for (const std::string& header_extension : kHeaderFileTypes)
                 {
                     pos = temp_auto_gen_file_name.find(header_extension);
-                    if (pos != std::string::npos && // Ensure that the file type matches a known header extension
-                        pos ==
-                          temp_auto_gen_file_name.size() -
-                            header_extension.size()) // Ensure that the header extension is at the end of the string
+                    if (pos != std::string::npos && // Ensure that the file type matches a known
+                                                    // header extension
+                        pos == temp_auto_gen_file_name.size() -
+                                 header_extension.size()) // Ensure that the header extension is at
+                                                          // the end of the string
                     {
                         shader_name_is_header_type = true;
                         break;
@@ -1261,7 +1444,8 @@ ParseShaderHeader(const std::filesystem::path& project_item_path,
                 if (!shader_name_is_header_type)
                 {
                     std::string shader_name_header_type_error =
-                      "The shader at " + shader_path + " has " + kAutoGenFileNameId + " \"" + temp_auto_gen_file_name +
+                      "The shader at " + shader_path + " has " + kAutoGenFileNameId + " \"" +
+                      temp_auto_gen_file_name +
                       "\", which is not a known header extension. Known header extensions are:";
                     for (const std::string& header_extension : kHeaderFileTypes)
                     {
@@ -1280,11 +1464,12 @@ ParseShaderHeader(const std::filesystem::path& project_item_path,
     file_stream.close();
     if (shader_name.empty() || shader_type == ShaderType::kNone || auto_gen_file_name.empty())
     {
-        const std::string shader_header_error = "Unable to parse shader header for file: " + shader_path +
-                                                "\nAll shaders are required to have commented headers in the form:\n"
-                                                "\t// @uAutoGenFileName: <name for auto generation> (header)\n"
-                                                "\t// @uName: <unique name>\n"
-                                                "\t// @uType: <type>\n";
+        const std::string shader_header_error =
+          "Unable to parse shader header for file: " + shader_path +
+          "\nAll shaders are required to have commented headers in the form:\n"
+          "\t// @uAutoGenFileName: <name for auto generation> (header)\n"
+          "\t// @uName: <unique name>\n"
+          "\t// @uType: <type>\n";
         PrintLn(shader_header_error, OutputType::kError);
         shader_info = {};
         return false;
@@ -1306,7 +1491,8 @@ ParseProjectFile(Project& temp_project, const std::string& project_path)
     std::ifstream file_stream(project_file_full_path);
     if (!file_stream.is_open())
     {
-        PrintLn("Unable to open file stream with path: " + project_file_full_path, OutputType::kError);
+        PrintLn("Unable to open file stream with path: " + project_file_full_path,
+                OutputType::kError);
         return false;
     }
 
@@ -1350,7 +1536,8 @@ ParseProjectFile(Project& temp_project, const std::string& project_path)
         if (pos != std::string::npos)
         {
             CHECK_TAG_FIRST_COLUMN_ERR;
-            std::string temp_name = file_stream_line.substr(kProjectNameProjectTag.size(), file_stream_line.size());
+            std::string temp_name = file_stream_line.substr(kProjectNameProjectTag.size(),
+                                                            file_stream_line.size());
             TrimWhiteSpaceAndQuotes(temp_name);
             CHECK_MULTIPLE_TAG_ERR(project_name, kProjectNameProjectTag);
             CHECK_STR_LEN_ERR(temp_name);
@@ -1363,8 +1550,8 @@ ParseProjectFile(Project& temp_project, const std::string& project_path)
         if (pos != std::string::npos)
         {
             CHECK_TAG_FIRST_COLUMN_ERR;
-            std::string temp_exe_name =
-              file_stream_line.substr(kExecutableNameProjectTag.size(), file_stream_line.size());
+            std::string temp_exe_name = file_stream_line.substr(kExecutableNameProjectTag.size(),
+                                                                file_stream_line.size());
             TrimWhiteSpaceAndQuotes(temp_exe_name);
             CHECK_MULTIPLE_TAG_ERR(exe_name, kExecutableNameProjectTag);
             CHECK_STR_LEN_ERR(temp_exe_name);
@@ -1377,8 +1564,9 @@ ParseProjectFile(Project& temp_project, const std::string& project_path)
         if (pos != std::string::npos)
         {
             CHECK_TAG_FIRST_COLUMN_ERR;
-            std::string temp_exe_output_subfolder =
-              file_stream_line.substr(kExecutableOutputSubfolderProjectTag.size(), file_stream_line.size());
+            std::string temp_exe_output_subfolder = file_stream_line.substr(
+              kExecutableOutputSubfolderProjectTag.size(),
+              file_stream_line.size());
             TrimWhiteSpaceAndQuotes(temp_exe_output_subfolder);
             CHECK_MULTIPLE_TAG_ERR(exe_output_subfolder, kExecutableOutputSubfolderProjectTag);
             CHECK_STR_LEN_ERR(temp_exe_output_subfolder);
@@ -1391,8 +1579,9 @@ ParseProjectFile(Project& temp_project, const std::string& project_path)
         if (pos != std::string::npos)
         {
             CHECK_TAG_FIRST_COLUMN_ERR;
-            std::string temp_root_shader_directory =
-              file_stream_line.substr(kRootShaderDirectoryProjectTag.size(), file_stream_line.size());
+            std::string temp_root_shader_directory = file_stream_line.substr(
+              kRootShaderDirectoryProjectTag.size(),
+              file_stream_line.size());
             TrimWhiteSpaceAndQuotes(temp_root_shader_directory);
             CHECK_MULTIPLE_TAG_ERR(root_shader_directory, kRootShaderDirectoryProjectTag);
             CHECK_STR_LEN_ERR(temp_root_shader_directory);
@@ -1407,11 +1596,12 @@ ParseProjectFile(Project& temp_project, const std::string& project_path)
 
     file_stream.close();
 
-#define REQUIRED_TAG_CHECK_ERR(tag_variable, tag_string)                                                              \
-    if (tag_variable.empty())                                                                                         \
-    {                                                                                                                 \
-        PrintLn("Project at: " + project_file_full_path + "failed to provide tag " + tag_string, OutputType::kError); \
-        return false;                                                                                                 \
+#define REQUIRED_TAG_CHECK_ERR(tag_variable, tag_string)                                         \
+    if (tag_variable.empty())                                                                    \
+    {                                                                                            \
+        PrintLn("Project at: " + project_file_full_path + "failed to provide tag " + tag_string, \
+                OutputType::kError);                                                             \
+        return false;                                                                            \
     }
 
     // Note: root shader dir not required; exe output required if exe name provided
@@ -1447,7 +1637,8 @@ AcquireProjectDependencies(ProjectMap& projects)
         const std::string expected_project_name = item_path_string + '/' + kProjectFileName;
 
         // Only asses directories with .uProject files
-        if (!std::filesystem::is_directory(item_path_string) || !std::filesystem::exists(expected_project_name))
+        if (!std::filesystem::is_directory(item_path_string) ||
+            !std::filesystem::exists(expected_project_name))
         {
             continue;
         }
@@ -1464,7 +1655,9 @@ AcquireProjectDependencies(ProjectMap& projects)
             if (kHeaderFileTypes.find(extension) != kHeaderFileTypes.end())
             {
                 // Note: -1 on substring index is to drop the '\' at the end of directory names
-                const std::string header_directory = project_item_path.substr(0, project_item_path.find(file_name) - 1);
+                const std::string header_directory = project_item_path.substr(
+                  0,
+                  project_item_path.find(file_name) - 1);
                 temp_project.header_files.emplace(
                   ToPosixPath(project_item.path().lexically_relative(kCurrentDirectory).string()));
             }
@@ -1507,7 +1700,8 @@ class Analyzer
         if (!std::filesystem::exists(analysis_output_path_) &&
             !std::filesystem::create_directory(analysis_output_path_))
         {
-            PrintLn("Unable to acquire or create analysis output directory: " + analysis_output_path_.string(),
+            PrintLn("Unable to acquire or create analysis output directory: " +
+                      analysis_output_path_.string(),
                     OutputType::kError);
             is_ok_ = false;
         }
@@ -1580,12 +1774,13 @@ class Analyzer
             return false;
         }
 
-        std::filesystem::path report_path =
-          std::filesystem::path(analysis_output_path_.string() + "/analysis_results.txt");
-        std::ofstream file_stream(report_path);
+        std::filesystem::path report_path = std::filesystem::path(analysis_output_path_.string() +
+                                                                  "/analysis_results.txt");
+        std::ofstream         file_stream(report_path);
         if (!file_stream.is_open())
         {
-            PrintLn("Cannot continue with analysis report; cannot open file stream.", OutputType::kError);
+            PrintLn("Cannot continue with analysis report; cannot open file stream.",
+                    OutputType::kError);
             return false;
         }
 
@@ -1617,8 +1812,9 @@ class Analyzer
 
             for (const auto& tag_entry : tag_info.second)
             {
-                file_stream << "   [" << tag_entry.developer_tag << "] (" << tag_entry.file.filename() << ", "
-                            << tag_entry.line_number << "): " << tag_entry.context << std::endl;
+                file_stream << "   [" << tag_entry.developer_tag << "] ("
+                            << tag_entry.file.filename() << ", " << tag_entry.line_number
+                            << "): " << tag_entry.context << std::endl;
             }
 
             file_stream << std::endl;
@@ -1630,7 +1826,9 @@ class Analyzer
 
   private:
     bool
-    TagAnalysisByFileType(const std::string& file_path_string, size_t& code_line_counter, size_t& comment_line_counter)
+    TagAnalysisByFileType(const std::string& file_path_string,
+                          size_t&            code_line_counter,
+                          size_t&            comment_line_counter)
     {
         size_t        file_line_number = 0;
         std::string   file_line_string = "";
@@ -1673,7 +1871,8 @@ class Analyzer
 
                     // Determine if a tag is present in the current line
                     size_t first_open_brace_pos  = file_line_string.find('[', double_slash_pos);
-                    size_t tag_indicator_pos     = file_line_string.find(tag_indicator_text, first_open_brace_pos);
+                    size_t tag_indicator_pos     = file_line_string.find(tag_indicator_text,
+                                                                     first_open_brace_pos);
                     size_t first_close_brace_pos = file_line_string.find(']', tag_indicator_pos);
                     if (tag_indicator_pos != std::string::npos)
                     {
@@ -1688,11 +1887,13 @@ class Analyzer
 
                         // Determine the dev name (if present)
                         std::string dev_name = "";
-                        if (first_open_brace_pos == std::string::npos || first_open_brace_pos > tag_indicator_pos)
+                        if (first_open_brace_pos == std::string::npos ||
+                            first_open_brace_pos > tag_indicator_pos)
                         {
                             // We will warn here, but still consider it a valid tag without a
                             // dev_name
-                            PrintLn("Tag parser (likely) found a malformed tag.\n   in file: " + file_path_string +
+                            PrintLn("Tag parser (likely) found a malformed tag.\n   in file: " +
+                                      file_path_string +
                                       "\n   on line: " + std::to_string(file_line_number) +
                                       "\n   with text: " + file_line_string,
                                     OutputType::kWarning);
@@ -1700,8 +1901,9 @@ class Analyzer
                         else
                         {
                             // This is a valid tag w/ a dev name
-                            dev_name =
-                              file_line_string.substr(first_open_brace_pos, tag_indicator_pos - first_open_brace_pos);
+                            dev_name = file_line_string.substr(
+                              first_open_brace_pos,
+                              tag_indicator_pos - first_open_brace_pos);
                             while (dev_name[0] == ' ' || dev_name[0] == '[')
                             {
                                 dev_name.erase(0, 1);
@@ -1713,8 +1915,9 @@ class Analyzer
                         }
 
                         // Determine file context
-                        std::string context = file_line_string.erase(first_open_brace_pos,
-                                                                     first_close_brace_pos - first_open_brace_pos + 1);
+                        std::string context = file_line_string.erase(
+                          first_open_brace_pos,
+                          first_close_brace_pos - first_open_brace_pos + 1);
                         while (context[0] == ' ' || context[0] == '/')
                         {
                             context.erase(0, 1);
@@ -1722,7 +1925,10 @@ class Analyzer
 
                         // We're done -- add the tag entry to the map member
                         entries_by_tag_type_[tag_type].push_back(
-                          { std::filesystem::path(file_path_string), context, dev_name, file_line_number });
+                          { std::filesystem::path(file_path_string),
+                            context,
+                            dev_name,
+                            file_line_number });
                     }
                 }
             }
@@ -1764,10 +1970,12 @@ class Analyzer
     };
 
     const std::map<TagType, std::string> tag_enum_to_string_ = {
-        { TagType::kTodo, "TODO" },       { TagType::kPerf, "PERF" },          { TagType::kNote, "NOTE" },
-        { TagType::kTemp, "TEMP" },       { TagType::kTest, "TEST" },          { TagType::kStudy, "STUDY" },
-        { TagType::kDebug, "DEBUG" },     { TagType::kRemove, "REMOVE" },      { TagType::kFindMe, "FINDME" },
-        { TagType::kRevisit, "REVISIT" }, { TagType::kStepInto, "STEP_INTO" }, { TagType::kCleanUp, "CLEAN_UP" },
+        { TagType::kTodo, "TODO" },          { TagType::kPerf, "PERF" },
+        { TagType::kNote, "NOTE" },          { TagType::kTemp, "TEMP" },
+        { TagType::kTest, "TEST" },          { TagType::kStudy, "STUDY" },
+        { TagType::kDebug, "DEBUG" },        { TagType::kRemove, "REMOVE" },
+        { TagType::kFindMe, "FINDME" },      { TagType::kRevisit, "REVISIT" },
+        { TagType::kStepInto, "STEP_INTO" }, { TagType::kCleanUp, "CLEAN_UP" },
         { TagType::kRestore, "RESTORE" },
     };
 
@@ -1784,24 +1992,28 @@ class Analyzer
 bool
 BakeShaders(BakedShaderMap& baked_shader_map, const UserCompilationFlags& user_compilation_flags)
 {
-    const std::string compilation_flag =
-      "// Compilation: " +
-      (user_compilation_flags.at(CompilationFlags::kDebug) ? std::string("DEBUG") : std::string("RELEASE"));
-    const std::string includes = "#include <" + kEngineSourceFolderName + "/shader_tools.h>\n#include<" +
-                                 kEngineSourceFolderName + "/type_tools.h>";
-    const std::string new_lines      = "\n\n";
-    const std::string comment        = "//";
-    const std::string generic_header = "//\n// This file is autogenerated; content changes will be overwritten.\n//\n";
+    const std::string compilation_flag = "// Compilation: " +
+                                         (user_compilation_flags.at(CompilationFlags::kDebug)
+                                            ? std::string("DEBUG")
+                                            : std::string("RELEASE"));
+    const std::string includes = "#include <" + kEngineSourceFolderName +
+                                 "/shader_tools.h>\n#include<" + kEngineSourceFolderName +
+                                 "/type_tools.h>";
+    const std::string new_lines = "\n\n";
+    const std::string comment   = "//";
+    const std::string generic_header =
+      "//\n// This file is autogenerated; content changes will be overwritten.\n//\n";
 
     struct BakedFileAttributes
     {
         std::filesystem::path baked_shader_dir; // Directory the baked shader will be written to
-        std::string           raw_shaders;      // Original shader file to bake; will be stored as comment in baked file
-        std::string           body;             // Body of the baked file
+        std::string
+          raw_shaders;    // Original shader file to bake; will be stored as comment in baked file
+        std::string body; // Body of the baked file
     };
 
-    std::set<std::filesystem::path>                                  files_created_this_compilation = {};
-    std::map<std::string /* baked file path */, BakedFileAttributes> baked_file_attributes          = {};
+    std::set<std::filesystem::path> files_created_this_compilation                         = {};
+    std::map<std::string /* baked file path */, BakedFileAttributes> baked_file_attributes = {};
 
     for (auto& baked_shader : baked_shader_map)
     {
@@ -1812,12 +2024,14 @@ BakeShaders(BakedShaderMap& baked_shader_map, const UserCompilationFlags& user_c
         std::filesystem::create_directory(baked_shaders_dir);
         if (!std::filesystem::exists(baked_shaders_dir))
         {
-            PrintLn("The baked shader path " + baked_shaders_dir.string() + " is invalid.", OutputType::kError);
+            PrintLn("The baked shader path " + baked_shaders_dir.string() + " is invalid.",
+                    OutputType::kError);
             return false;
         }
 
         // Ensure each shader has an associated spir-v module
-        std::string baked_shader_full_path = baked_shaders_dir.string() + '/' + baked_shader.second.auto_gen_file_name;
+        std::string baked_shader_full_path = baked_shaders_dir.string() + '/' +
+                                             baked_shader.second.auto_gen_file_name;
         if (baked_shader.second.spirv_path.empty())
         {
             PrintLn("The shader source " + baked_shader.first +
@@ -1851,7 +2065,8 @@ BakeShaders(BakedShaderMap& baked_shader_map, const UserCompilationFlags& user_c
             file_size = ftell(file);
             if (file_size % 4 != 0)
             {
-                PrintLn("Invalid SPIR-V file size: " + std::to_string(file_size) + "; must be a multiple of four.",
+                PrintLn("Invalid SPIR-V file size: " + std::to_string(file_size) +
+                          "; must be a multiple of four.",
                         OutputType::kError);
                 fclose(file);
                 return false;
@@ -1859,10 +2074,14 @@ BakeShaders(BakedShaderMap& baked_shader_map, const UserCompilationFlags& user_c
             fseek(file, 0, SEEK_SET);
             file_size_32_bit_words = file_size / 4;
             file_data.reserve(file_size_32_bit_words);
-            size_t items_read = fread(file_data.data(), sizeof(uint32_t), file_size_32_bit_words, file);
+            size_t items_read = fread(file_data.data(),
+                                      sizeof(uint32_t),
+                                      file_size_32_bit_words,
+                                      file);
             if (items_read != file_size_32_bit_words)
             {
-                PrintLn("Unable to read spirv data from file: " + baked_shader.first, OutputType::kError);
+                PrintLn("Unable to read spirv data from file: " + baked_shader.first,
+                        OutputType::kError);
                 return false;
             }
 
@@ -1889,7 +2108,8 @@ BakeShaders(BakedShaderMap& baked_shader_map, const UserCompilationFlags& user_c
 
         std::string       spirv_data_array_name = baked_shader.second.common_name + "_data";
         std::stringstream spirv_data_array_definition;
-        spirv_data_array_definition << "const u32 " << spirv_data_array_name << "[" << (file_size / 4) << "] = {\n";
+        spirv_data_array_definition << "const u32 " << spirv_data_array_name << "["
+                                    << (file_size / 4) << "] = {\n";
         for (size_t byte_idx = 0; byte_idx < file_size_32_bit_words; byte_idx++)
         {
             spirv_data_array_definition << file_data[byte_idx];
@@ -1902,13 +2122,13 @@ BakeShaders(BakedShaderMap& baked_shader_map, const UserCompilationFlags& user_c
 
         std::stringstream body_ss;
         body_ss << spirv_data_array_definition.str();
-        body_ss << "uVulkanShader " << baked_shader.second.common_name << " = \n{\n";
+        body_ss << "uShader " << baked_shader.second.common_name << " = \n{\n";
         body_ss << "\t.name = \"" << baked_shader.second.common_name << "\",\n";
         body_ss << "\t.data = &" << spirv_data_array_name << "[0],\n";
         body_ss << "\t.data_size = " << std::to_string(file_size) << ",\n";
         body_ss << "\t.type = " << kUnderstoneShaderTypeEnumPrefix << shader_type_string << ",\n";
-        body_ss << "\t.module = {}\n";
-        body_ss << "};";
+        body_ss << "\t.module = 0\n";
+        body_ss << "};\n";
 
         // Newline if adding another baked shader block to an existing file
         std::string& baked_shader_body_text = baked_file_attributes[baked_shader_full_path].body;
@@ -1931,8 +2151,10 @@ BakeShaders(BakedShaderMap& baked_shader_map, const UserCompilationFlags& user_c
             }
 
             const std::string pragma_once = "#pragma once\n\n";
-            file_stream << generic_header << attribute_iter.second.raw_shaders << compilation_flag << "\n"
-                        << comment << new_lines << pragma_once << includes << new_lines << attribute_iter.second.body;
+            file_stream << generic_header << attribute_iter.second.raw_shaders << compilation_flag
+                        << "\n"
+                        << comment << new_lines << pragma_once << includes << new_lines
+                        << attribute_iter.second.body;
 
             file_stream.close();
 
@@ -1944,15 +2166,18 @@ BakeShaders(BakedShaderMap& baked_shader_map, const UserCompilationFlags& user_c
     // Delete files which were not created during this most recent bake
     for (const auto& attribute_iter : baked_file_attributes)
     {
-        for (auto& file_or_empty_dir : std::filesystem::directory_iterator(attribute_iter.second.baked_shader_dir))
+        for (auto& file_or_empty_dir :
+             std::filesystem::directory_iterator(attribute_iter.second.baked_shader_dir))
         {
             std::filesystem::path del_path = file_or_empty_dir.path();
             if (del_path.filename() == kWarningFileName) continue;
 
-            if (files_created_this_compilation.find(del_path) == files_created_this_compilation.end())
+            if (files_created_this_compilation.find(del_path) ==
+                files_created_this_compilation.end())
             {
                 if (std::filesystem::is_regular_file(file_or_empty_dir) ||
-                    (std::filesystem::is_directory(file_or_empty_dir) && std::filesystem::is_empty(file_or_empty_dir)))
+                    (std::filesystem::is_directory(file_or_empty_dir) &&
+                     std::filesystem::is_empty(file_or_empty_dir)))
                 {
                     std::filesystem::remove(file_or_empty_dir);
                 }
@@ -1961,19 +2186,23 @@ BakeShaders(BakedShaderMap& baked_shader_map, const UserCompilationFlags& user_c
 
         // Create warning file if one doesn't exist
         {
-            std::string warning_file_path = attribute_iter.second.baked_shader_dir.string() + '/' + kWarningFileName;
+            std::string warning_file_path = attribute_iter.second.baked_shader_dir.string() + '/' +
+                                            kWarningFileName;
             if (!std::filesystem::exists(std::filesystem::path(warning_file_path)))
             {
                 std::ofstream file_stream(warning_file_path, std::ios::out);
                 if (!file_stream.is_open())
                 {
-                    PrintLn("Cannot open baked shader warning file for writing.", OutputType::kError);
+                    PrintLn("Cannot open baked shader warning file for writing.",
+                            OutputType::kError);
                     return false;
                 }
 
-                file_stream << "!!\n!! WARNING\n!!\n\n- The top-level of this directory is for auto generated baked "
+                file_stream << "!!\n!! WARNING\n!!\n\n- The top-level of this directory is for "
+                               "auto generated baked "
                                "shaders only.\n- "
-                               "For build tool compilation, top-level files which were were not generated by that "
+                               "For build tool compilation, top-level files which were were not "
+                               "generated by that "
                                "compilation will be "
                                "deleted.\n- "
                                "Subdirectories with contents will remain unaffected.";
@@ -2005,8 +2234,9 @@ PrintLnHelpMessage()
 
     std::string options_str     = "Options:";
     std::string sub_options_str = "Description:";
-    std::string table_header =
-      options_str + spacing_string.substr(options_str.size(), spacing_string.size()) + sub_options_str;
+    std::string table_header    = options_str +
+                               spacing_string.substr(options_str.size(), spacing_string.size()) +
+                               sub_options_str;
     std::string table_header_separator = "";
     for (size_t s = 0; s < table_header.size(); s++)
     {
@@ -2021,7 +2251,8 @@ PrintLnHelpMessage()
 
     for (const auto& arg_pair : kAllCommandLineArgs)
     {
-        help_text << arg_pair.first << spacing_string.substr(arg_pair.first.size(), spacing_string.size())
+        help_text << arg_pair.first
+                  << spacing_string.substr(arg_pair.first.size(), spacing_string.size())
                   << arg_pair.second << std::endl;
     }
 
@@ -2139,9 +2370,9 @@ main(int argc, char** argv)
     understone_root_dir = DetermineUnderstoneRootDirectory();
     if (understone_root_dir.empty())
     {
-        std::string error_message =
-          "Unable to find the root Understone directory along any sub or parent directory of the current path: " +
-          kCurrentDirectory.string();
+        std::string error_message = "Unable to find the root Understone directory along any sub or "
+                                    "parent directory of the current path: " +
+                                    kCurrentDirectory.string();
         PrintLn(error_message, OutputType::kError);
         return -1;
     }
@@ -2152,6 +2383,24 @@ main(int argc, char** argv)
     if (!AcquireProjectDependencies(projects))
     {
         PrintLn("Unable to acquire project dependency information.", OutputType::kError);
+        return -1;
+    }
+
+    // Find Understone project.
+    bool    understone_project_found = false;
+    Project understone_project       = {};
+    for (const auto& project : projects)
+    {
+        if (project.second.project_name == kUnderstoneEngineProjectName)
+        {
+            understone_project       = project.second;
+            understone_project_found = true;
+        }
+    }
+
+    if (false == understone_project_found)
+    {
+        PrintLn("Unable to find the understone project.", OutputType::kError);
         return -1;
     }
 
@@ -2190,32 +2439,38 @@ main(int argc, char** argv)
         return -1;
     }
 
-    CompilerInvocationGenerator compiler_generator =
-      CompilerInvocationGenerator(user_compilation_flags, user_compilation_options, user_build_flags);
+    CompilerInvocationGenerator compiler_generator = CompilerInvocationGenerator(
+      user_compilation_flags,
+      user_compilation_options,
+      user_build_flags);
     if (!compiler_generator.IsOk())
     {
         return -1;
     }
 
     // Shader invocation & compilation
-    compiler_generator.GenerateShaderInvocation(user_shader_compiler, user_compilation_flags, projects);
+    compiler_generator.GenerateShaderInvocation(user_shader_compiler,
+                                                user_compilation_flags,
+                                                projects);
     if (!compiler_generator.IsOk())
     {
         return -1;
     }
 
+    // Format Understone Engine files first.
     if (user_build_flags.at(BuildFlags::kRunCodeFormatter))
     {
         PrintLn("Formatting Understone Engine source files...");
-        const std::string expected_understone_project_dir = understone_root_dir + '/' + kEngineSourceFolderName;
-        const auto&       find_result                     = projects.find(expected_understone_project_dir);
+        const std::string expected_understone_project_dir = understone_root_dir + '/' +
+                                                            kEngineSourceFolderName;
+        const auto& find_result = projects.find(expected_understone_project_dir);
         if (find_result == projects.end())
         {
-            PrintLn("Cannot format engine files; Understone project cannot be found in expected location: " +
+            PrintLn("Cannot format engine files; Understone project cannot be found in expected "
+                    "location: " +
                     expected_understone_project_dir);
             return -1;
         }
-
         else if (std::system(GetCodeFormatInvocation(find_result->second).c_str()))
         {
             return -1;
@@ -2230,50 +2485,63 @@ main(int argc, char** argv)
           compiler_generator.GetShaderInvocationByProjectName(project_name);
 
         PrintLn("Building project " + project_name + ':');
-        if (!shader_compilation_invocation.empty())
+
+        // [ cfarvin::REVISIT ] Source inclusion system.
+        //
+        // Given that we've made some changes to the way sources are included for projects, it
+        // may not be necessary in the future to skip these steps for the Undrestone Project.
+        // We probably will want to skip them, but we should make sure once the new system is
+        // in place.
+        //
+        // Don't compile shaders or source files for the Understone Project.
+        if (project.second.project_name != kUnderstoneEngineProjectName)
         {
-            PrintLn("  Compiling & baking shaders...");
-            if ((std::system(shader_compilation_invocation.c_str())) ||
-                (!BakeShaders(project.second.baked_shader_map, user_compilation_flags)))
+            if (!shader_compilation_invocation.empty())
             {
-                PrintLn("\nCompiled with:\n" + shader_compilation_invocation);
+                PrintLn("  Compiling & baking shaders...");
+                if ((std::system(shader_compilation_invocation.c_str())) ||
+                    (!BakeShaders(project.second.baked_shader_map, user_compilation_flags)))
+                {
+                    PrintLn("\nCompiled with:\n" + shader_compilation_invocation);
+                    return -1;
+                }
+            }
+            else
+            {
+                PrintLn("  No shader info provided...");
+            }
+
+            PrintLn("  Generating C/C++ compilation invocation...");
+            compiler_generator.GenerateSourceInvocation(user_compiler,
+                                                        user_compilation_flags,
+                                                        user_compilation_options,
+                                                        user_build_flags,
+                                                        understone_project,
+                                                        project.second,
+                                                        project.first);
+
+            if (user_build_flags.at(BuildFlags::kRunCodeFormatter))
+            {
+                PrintLn("  Formatting source files...");
+                const std::string format_invocation = GetCodeFormatInvocation(project.second);
+                if (std::system(format_invocation.c_str()))
+                {
+                    PrintLn("\nFormatted with:\n" + format_invocation);
+                    return -1;
+                }
+            }
+
+            PrintLn("  Compiling source files...");
+            const std::string source_compilation_invocation =
+              compiler_generator.GetSourceInvocationByProjectName(project.second.project_name);
+            if (!compiler_generator.IsOk() || std::system(source_compilation_invocation.c_str()))
+            {
+                PrintLn("\nCompiled with:\n" + source_compilation_invocation);
                 return -1;
             }
-        }
-        else
-        {
-            PrintLn("  No shader info provided...");
-        }
 
-        PrintLn("  Generating C/C++ compilation invocation...");
-        compiler_generator.GenerateSourceInvocation(user_compiler,
-                                                    user_compilation_flags,
-                                                    user_compilation_options,
-                                                    user_build_flags,
-                                                    project.second,
-                                                    project.first);
-
-        if (user_build_flags.at(BuildFlags::kRunCodeFormatter))
-        {
-            PrintLn("  Formatting source files...");
-            const std::string format_invocation = GetCodeFormatInvocation(project.second);
-            if (std::system(format_invocation.c_str()))
-            {
-                PrintLn("\nFormatted with:\n" + format_invocation);
-                return -1;
-            }
+            PrintLn("  Complete.\n");
         }
-
-        PrintLn("  Compiling source files...");
-        const std::string source_compilation_invocation =
-          compiler_generator.GetSourceInvocationByProjectName(project.second.project_name);
-        if (!compiler_generator.IsOk() || std::system(source_compilation_invocation.c_str()))
-        {
-            PrintLn("\nCompiled with:\n" + source_compilation_invocation);
-            return -1;
-        }
-
-        PrintLn("  Complete.\n");
     }
 
     // Code analysis
@@ -2301,7 +2569,8 @@ main(int argc, char** argv)
         return -1;
     }
 
-    std::cout << "Successfully built " + std::to_string(num_projects - 1) + " projects." << std::endl;
+    std::cout << "Successfully built " + std::to_string(num_projects - 1) + " projects."
+              << std::endl;
 
     return 0;
 }

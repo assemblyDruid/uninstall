@@ -5,6 +5,7 @@
 #include "macro_tools.h"
 #include "type_tools.h"
 
+#include <stdbool.h>
 #include <string.h> // [ cfarvin::REMOVE ]
 
 typedef struct
@@ -14,7 +15,7 @@ typedef struct
     const size_t bytes;
 } uString;
 
-__UE_inline__ static size_t
+static size_t
 uStringLen(const char* const uStr)
 {
     uAssertMsg_v(uStr, "String must be non null.");
@@ -23,7 +24,7 @@ uStringLen(const char* const uStr)
     if (uStr)
     {
         // Avoid while()
-        size_t max = ~(( size_t )0);
+        size_t max = ~((size_t)0);
         for (size_t idx = 0; idx < max; idx++)
         {
             if (uStr[idx] == '\0')
@@ -43,7 +44,7 @@ uStringLen(const char* const uStr)
 // Verifies that the uString members have reasonable values,
 // and that the uString represents a char stream of non-zero
 // length.
-__UE_inline__ static bool
+static bool
 uStringVerify(const uString* const uStr)
 {
     bool retVal = true;
@@ -111,21 +112,21 @@ uStringVerify(const uString* const uStr)
     return retVal;
 }
 
-__UE_inline__ static uString*
+static uString*
 uStringInit(const char* str)
 {
     // [ cfarvin::REVISIT ] Strlen correctness, use throughout uString
     if (str)
     {
-        uString* uStr                    = ( uString* )calloc(1, sizeof(uString));
-        size_t*  non_const_length        = ( size_t* )&(uStr->length);
-        size_t*  non_const_buffer_length = ( size_t* )&(uStr->bytes);
+        uString* uStr                    = (uString*)calloc(1, sizeof(uString));
+        size_t*  non_const_length        = (size_t*)&(uStr->length);
+        size_t*  non_const_buffer_length = (size_t*)&(uStr->bytes);
 
         // strlen does not count '\0'
         *non_const_length        = uStringLen(str);
         *non_const_buffer_length = *non_const_length + 1;
 
-        uStr->data = ( char* )calloc(1, sizeof(char) * *non_const_buffer_length);
+        uStr->data = (char*)calloc(1, sizeof(char) * *non_const_buffer_length);
         memcpy(uStr->data, str, *non_const_length);
         (uStr->data)[*non_const_length] = '\0';
 
@@ -135,7 +136,7 @@ uStringInit(const char* str)
     return NULL;
 }
 
-__UE_inline__ static bool
+static bool
 uStringDestroy(uString* const uStr)
 {
     if (uStr && uStr->data)

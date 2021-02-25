@@ -7,7 +7,7 @@
 
 #define UE_ENGINE_NAME "Understone Engine"
 
-__UE_inline__ static const char*
+static const char*
 uGetEngineName()
 {
     return UE_ENGINE_NAME;

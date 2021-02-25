@@ -1,0 +1,3 @@
+@ProjectName               "Memory Arena"
+@ExecutableName            "memory_arena"
+@ExecutableOutputSubfolder "examples/data_structures/memory_arena"

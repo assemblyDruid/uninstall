@@ -1,2107 +1,935 @@
-// [ cfarvin::TODO ] Something like this would be REALLY helpful in debugging in
-// the appropriate
-//                   function header contexts:
-//                   uDebugStatement(static char times_called = 1);
-//                   uDebugStatement(const u8 expected_times_called = <X>);
-//                   uDebugStatement(times_called++);
-//                   uDebugStatement(if(times_called > expected_times_called)
-//                   uAssertMsg_v(...) );
+/*
+ * Guiding Principals
+ *
+ * Vulkan is a verbose API. Thus, this library is also very verbose in it's calls to
+ * create and manage Vulkan types and objects. The guiding idea is that each function
+ * call is as verbose as necessary to create Vulkan objects with all options provided
+ * by vulkan made available to the user, except where other parameters in a function
+ * call can be used to deduce some members of a Vulkan structure or task. This is
+ * particularly relevant to the "Create" functions. Though this means more verbocity
+ * in calling and using functions in this library, doing so  directly lends an accurate
+ * view of all of the information needed by Vulkan to perform tasks and create objects.
+ * A corresponding principal is that the user is free to build their own functions which
+ * hedge this verbocity for specific uses.
+ */
+
+#include <stdbool.h>
 
 #ifndef __UE_VULKAN_TOOLS_H__
 #define __UE_VULKAN_TOOLS_H__
 
-#if _WIN32
-#define VK_USE_PLATFORM_WIN32_KHR 1
-#endif // _WIN32
-
-#include "vulkan/vulkan.h"
-
-#if _WIN32
+#if __linux__
+#include <understone/nix_platform.h>
+#elif _WIN32
 #include <understone/win_platform.h>
 #endif // _WIN32
 
-#include "engine_info.h"
-#include "memory_tools.h"
-#include "render_tools.h"
-#include "shader_tools.h"
-#include "vulkan_macros.h"
-#include "vulkan_types.h"
-#include "window_tools.h"
+#include "type_tools.h"
+#include "vulkan/vulkan.h"
 
-extern const u8 kNumVulkanCommandBuffers;
+/// A grouping of active queues.
+typedef struct
+{
+    VkQueue graphics_queue;
+    VkQueue present_queue;
+    u32     graphics_queue_family_index;
+    u32     present_queue_family_index;
+    u32     active_queue_family_count;
+} uvkActiveQueues;
 
-// [ cfarvin::REMOVE ] Remove stdio.h
-#include <stdio.h>
-
-void
+// [ cfarvin::TODO ] Semantics
+//
+// Rename this function to uvkDestroy or uvkTearDown.
+/*
+ * @brief Destroy all vulkan objects.
+ */
+bool
 uDestroyVulkan();
 
-// [ cfarvin::TODO ] Remove all singletons from function parameter calls.
-
-void
-uQueryVulkanDeviceExtensions(const VkPhysicalDevice* const restrict physical_device,
-                             const char** const restrict            user_device_extension_names,
-                             const u16                              num_user_device_extension_names,
-                             u16* const restrict                    num_verified_extension_names);
-
-__UE_inline__ bool
-uSelectVulkanSwapChain(const uGameWindow* const restrict game_window);
-
-__UE_inline__ void
-uCreateVulkanSwapChain(const uGameWindow* const restrict);
-
-__UE_inline__ void
-uCreateVulkanImageViews();
-
-__UE_inline__ void
-uCreateVulkanRenderPass();
-
-void
-uCreateVulkanGraphicsPipeline(const size_t                                          num_shader_stage_create_infos,
-                              const VkPipelineShaderStageCreateInfo* const restrict shader_stage_create_infos);
-
-void
-uCreateVulkanFrameBuffers();
-
-void
-uCreateVulkanCommandBuffers();
-
+/*
+ * @brief Create a Win32 surface.
+ *
+ * @param[in] instance A valid VkInstance.
+ * @param[in] window_handle A valid Win32 HWND.
+ * @param[in] h_istance A valid Win32 HISNTACE.
+ * @param[out] return_surface The surface to be created by this function.
+ *
+ * @return True on success, false otherwise.
+ */
 bool
-uValidateVulkanSwapChainAndSurfaceCompatibility(const VkPhysicalDevice             potential_physical_device,
-                                                const VkSurfaceKHR                 potential_surface,
-                                                u32* const restrict                return_num_surface_formats,
-                                                VkSurfaceFormatKHR* const restrict return_surface_format,
-                                                u32* const restrict                return_num_present_modes,
-                                                VkPresentModeKHR* const restrict   return_present_modes);
+uvkCreateWin32Surface(const VkInstance instance,
+                      HWND             window_handle,
+                      HINSTANCE        h_instance,
+                      VkSurfaceKHR*    return_surface);
 
-__UE_inline__ void
-uResetOldSwapChain()
-{
-    uVkVerbose("Resetting old swap chain components...\n");
-
-    uVulkanImageGroup* image_group = ( uVulkanImageGroup* )uGetVulkanImageGroup();
-    uAssertMsg_v(image_group, "[ vulkan ] uVulkanImageGroup ptr must be non null.\n");
-    uAssertMsg_v(image_group->swap_chain, "[ vulkan ] Image group swap chain ptr must be non null.\n");
-
-    VkSwapchainKHR old_swap_chain = image_group->swap_chain;
-
-    // [ cfarvin::REVISIT ] [ SWAPCHAIN ] Still plan on doing this, just getting
-    // compilation working.
-    /* uPrepImageGroupForSwapchainRebuild(); */
-    /* uPrepCommandBuffersForSwapchainRebuild(); */
-    /* uPrepRenderToolsForSwapchainRebuild(); */
-
-    // [ cfarvin::TODO ] You're always confused about where some of these objects
-    // are. Are they
-    //                   in render_tools? Maybe vulkan_tools? Perhaps
-    //                   vulkan_types? Solve this please.
-    // [ cfarvin::TODO ] Remove these when the "prep" functions above are
-    // implemented correctly.
-    /* uResetVulkanImageGroup(); */
-    /* uDestroyVulkanCommandBuffers(); */
-    /* uResetVulkanRenderInfo(); */
-
-    // Image group was reset.
-    image_group                          = ( uVulkanImageGroup* )uGetVulkanImageGroup();
-    VkSwapchainKHR* non_const_swap_chain = ( VkSwapchainKHR* )&(image_group->old_swap_chain);
-    *non_const_swap_chain                = old_swap_chain;
-}
-
-// Note: Considered undefined behavior to call when game window is minimized.
-__UE_inline__ void
-uRebuildVulkanSwapChain(const VkPhysicalDevice                                physical_device,
-                        const VkDevice                                        logical_device,
-                        const VkInstance                                      instance,
-                        const VkPipelineShaderStageCreateInfo* const restrict shader_stage_create_infos,
-                        const size_t                                          num_shader_stage_create_infos,
-                        const uGameWindow* const restrict                     game_window)
-{
-    // [ cfarvin::REVISIT ] I removed "is_rebuilding_swap_chain" parameter from
-    // uValidateVulkanSwapChainAndSurfaceCompatibility and commented out some code
-    // which freed the surface_info->present_modes and
-    // surface_info->surface_formats (when rebuilding). We may need to handle this
-    // here or elsewhere, since it is no longer handled there.
-
-    // [ cfarvin::NOTE ] [ SWAPCHAIN ] Since we're working on using the old
-    // swapchain data, building a new
-    //                   swapchain before we destroy the old one - maybe - just
-    //                   maybe - we dont' need to wait for the device to be idle
-    //                   as is done below. Glances at the documentation seem to
-    //                   support this (saying that images MAY be used from the old
-    //                   swapchain).
-    /* uVulkanInfo* v_info = ( uVulkanInfo* )uGetVulkanInfo(); */
-    /* vkDeviceWaitIdle(v_info->logical_device); */
-
-    uVkVerbose("[ begin ] swap chain rebuild\n");
-    uResetOldSwapChain();
-
-    // Rebuild swap chain
-    VkSurfaceKHR        new_surface             = NULL;
-    u32                 new_num_surface_formats = 0;
-    VkSurfaceFormatKHR* new_surface_formats     = NULL;
-    u32                 new_num_present_modes   = 0;
-    VkPresentModeKHR*   new_present_modes       = NULL;
-
-    //
-    // [ cfarvin::REVISIT ] you were about to continue filling in the vulkan
-    // objects above
-    //                      starting with vksurfacekhr that are going to be needed
-    //                      to create a brand new swapchain. You only stopped to
-    //                      go through the functions towards the bottom of this
-    //                      function, in order to make versions of them which do
-    //                      not rely upon our singleton system.
-    //
-
-    bool swap_chain_surface_compatible = uValidateVulkanSwapChainAndSurfaceCompatibility(physical_device,
-                                                                                         new_surface,
-                                                                                         &new_num_surface_formats,
-                                                                                         new_surface_formats,
-                                                                                         &new_num_present_modes,
-                                                                                         new_present_modes);
-
-    const char swap_chain_surface_error[] = "[ vulkan ] The swap chain and surface were found to be incompatible.\n";
-    uAssertMsg_v(swap_chain_surface_compatible, swap_chain_surface_error);
-    if (!swap_chain_surface_compatible)
-    {
-        uFatal(swap_chain_surface_error);
-    }
-
-    uCreateVulkanSwapChain(game_window);
-    uCreateVulkanImageViews();
-    uCreateVulkanRenderPass();
-    uCreateVulkanGraphicsPipeline(num_shader_stage_create_infos, shader_stage_create_infos);
-    uCreateVulkanFrameBuffers();
-    uCreateVulkanCommandBuffers();
-
-    uVkVerbose("[ end ] swap chain rebuild\n");
-    uDebugStatement(fflush(stdout));
-}
-
+/*
+ * @brief Destroys a valid VkSurfaceKHR.
+ *
+ * @param[in] instance A valid VkInstance.
+ * @param[in] surface A valid VkSurfaceKHR to destroy.
+ */
 void
-uCreateVulkanCommandBuffers()
-{
-    uVulkanInfo*        v_info       = ( uVulkanInfo* )uGetVulkanInfo();
-    uVulkanCommandInfo* command_info = ( uVulkanCommandInfo* )uGetVulkanCommandInfo();
-    uVulkanImageGroup*  image_group  = ( uVulkanImageGroup* )uGetVulkanImageGroup();
-    uVulkanRenderInfo*  render_info  = ( uVulkanRenderInfo* )uGetVulkanRenderInfo();
-    uVulkanSurfaceInfo* surface_info = ( uVulkanSurfaceInfo* )uGetVulkanSurfaceInfo();
-
-    uAssertMsg_v(v_info, "[ vulkan ] uVulkaninfo ptr must be non null.\n");
-    uAssertMsg_v(v_info->physical_device, "[ vulkan ] VkPhysicalDevice must be non zero.\n");
-    uAssertMsg_v(command_info, "[ vulkan ] uVulkanCommandInfo ptr must be non null.\n");
-    uAssertMsg_v(command_info->command_pool, "[ vulkan ] VkCommandPool must be non zero.\n");
-    uAssertMsg_v(image_group, "[ vulkan ] uVulkanImageGroup ptr must be non zero.\n");
-    uAssertMsg_v(image_group->num_images, "[ Vulkan ] Image count must be non zero.\n");
-    uAssertMsg_v(render_info, "[ vulkan ] uVulkanRenderInfo ptr must be non null.\n");
-    uAssertMsg_v(render_info->render_pass, "[ vulkan ] VkRenderPass must be non zero.\n");
-    uAssertMsg_v(render_info->graphics_pipeline, "[ vulkan ] VkPipeline ptr must be non zero.\n");
-    uAssertMsg_v(surface_info, "[ vulkan ] uVulkanSurfaceInfo must be non null.\n");
-
-    // Create command buffers
-    if (image_group->num_images > kNumVulkanCommandBuffers)
-    {
-        uFatal("[ api ] More swap chain images than command buffers: (%d, %d).\n",
-               image_group->num_images,
-               kNumVulkanCommandBuffers);
-    }
-
-    *( VkCommandBuffer** )&(command_info->command_buffers) =
-      ( VkCommandBuffer* )calloc(image_group->num_images, sizeof(VkCommandBuffer));
-
-    if (!command_info->command_buffers)
-    {
-        uFatal("[ vulkan ] Unable to allocate command buffers.\n");
-    }
-
-    // Note: cmd buffer count set in struct for outside use; image number used
-    // internally.
-    *( u32* )&(command_info->num_command_buffers) = image_group->num_images;
-
-    VkCommandBufferAllocateInfo cb_alloc_create_info = {};
-    cb_alloc_create_info.sType                       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cb_alloc_create_info.commandPool                 = command_info->command_pool;
-    cb_alloc_create_info.level                       = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cb_alloc_create_info.commandBufferCount          = image_group->num_images;
-
-    VkResult result = vkAllocateCommandBuffers(v_info->logical_device,
-                                               &cb_alloc_create_info,
-                                               ( VkCommandBuffer* )command_info->command_buffers);
-
-    if (result != VK_SUCCESS)
-    {
-        uFatal("[ vulkan ] Unable to create command buffers.\n");
-    }
-
-    for (u32 image_idx = 0; image_idx < image_group->num_images; image_idx++)
-    {
-        // Begin cb recording
-        VkCommandBufferBeginInfo cb_begin_info = {};
-        cb_begin_info.sType                    = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        cb_begin_info.flags                    = 0;
-        cb_begin_info.pInheritanceInfo         = NULL;
-
-        result = vkBeginCommandBuffer(command_info->command_buffers[image_idx], &cb_begin_info);
-
-        if (result != VK_SUCCESS)
-        {
-            uFatal("[ vulkan ] Unable to begin command buffer at index: %d.\n", image_idx);
-        }
-
-        // Begin render passs
-        VkClearValue clear_value     = {};
-        clear_value.color.float32[3] = 1.0f;
-
-        VkRenderPassBeginInfo rp_begin_info = {};
-        rp_begin_info.sType                 = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-        rp_begin_info.renderPass            = render_info->render_pass;
-        rp_begin_info.framebuffer           = image_group->frame_buffers[image_idx];
-        rp_begin_info.renderArea.offset.x   = 0;
-        rp_begin_info.renderArea.offset.y   = 0;
-        rp_begin_info.renderArea.extent     = surface_info->surface_capabilities.currentExtent;
-        rp_begin_info.clearValueCount       = 1;
-        rp_begin_info.pClearValues          = &clear_value;
-
-        vkCmdBeginRenderPass(command_info->command_buffers[image_idx], &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
-
-        vkCmdBindPipeline(command_info->command_buffers[image_idx],
-                          VK_PIPELINE_BIND_POINT_GRAPHICS,
-                          render_info->graphics_pipeline);
-
-        vkCmdDraw(command_info->command_buffers[image_idx],
-                  3,  // vertex count
-                  1,  // instance count
-                  0,  // first vertex
-                  0); // first instance
-
-        vkCmdEndRenderPass(command_info->command_buffers[image_idx]);
-
-        result = vkEndCommandBuffer(command_info->command_buffers[image_idx]);
-        if (result != VK_SUCCESS)
-        {
-            uFatal("[ vulkan ] Unable to end command buffer.\n");
-        }
-    }
-}
-
-void
-uCreateVulkanCommandPool()
-{
-    uVulkanInfo*        v_info       = ( uVulkanInfo* )uGetVulkanInfo();
-    uVulkanCommandInfo* command_info = ( uVulkanCommandInfo* )uGetVulkanCommandInfo();
-
-    uAssertMsg_v(v_info, "[ vulkan ] uVulkaninfo ptr must be non null.\n");
-    uAssertMsg_v(v_info->physical_device, "[ vulkan ] VkPhysicalDevice must be non zero.\n");
-    uAssertMsg_v(command_info, "[ vulkan ] uVulkanCommandInfo ptr must be non zero.\n");
-
-    // Create graphics command pool
-    VkCommandPoolCreateInfo command_pool_create_info = {};
-    command_pool_create_info.sType                   = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    command_pool_create_info.queueFamilyIndex        = uVULKAN_GRAPHICS_QUEUE_INDEX;
-    command_pool_create_info.flags                   = 0;
-
-    VkResult result = vkCreateCommandPool(v_info->logical_device,
-                                          &command_pool_create_info,
-                                          NULL,
-                                          ( VkCommandPool* )&(command_info->command_pool));
-    if (result != VK_SUCCESS)
-    {
-        uFatal("[ vulkan ] Unable to create command pool.\n");
-    }
-}
-
-void
-uCreateVulkanFrameBuffers()
-{
-    uVulkanInfo*        v_info       = ( uVulkanInfo* )uGetVulkanInfo();
-    uVulkanSurfaceInfo* surface_info = ( uVulkanSurfaceInfo* )uGetVulkanSurfaceInfo();
-    uVulkanImageGroup*  image_group  = ( uVulkanImageGroup* )uGetVulkanImageGroup();
-    uVulkanRenderInfo*  render_info  = ( uVulkanRenderInfo* )uGetVulkanRenderInfo();
-
-    uAssertMsg_v(v_info, "[ vulkan ] uVulkanInfo ptr must be non null.\n");
-    uAssertMsg_v(v_info->logical_device, "[ vulkan ] VkPhysicalDevice must be non zero.\n");
-    uAssertMsg_v(surface_info, "[ vulkan ] uVulkanSurfaceInfo ptr must be non null.\n");
-    uAssertMsg_v(image_group, "[ vulkan ] uVulkanImageGroup ptr must be non null.\n");
-    uAssertMsg_v(render_info, "[ vulkan ] uVulkanImageGroup ptr must be non null.\n");
-
-    // [ cfarvin::TODO ] We're not doing things this way any more, but the check
-    // for null frame buffers is still valid when where rebuilding the
-    //                   swap chain. Need to implement this in the right place.
-    /* uAssertMsg_v(is_rebuilding_swap_chain || !image_group->frame_buffers, "[
-     * vulkan ] VkFrameBuffer ptr must be null; will be overwritten.\n"); */
-
-    // Create a frame buffer for each image view
-    *( VkFramebuffer** )&(image_group->frame_buffers) =
-      ( VkFramebuffer* )calloc(image_group->num_images, sizeof(VkFramebuffer));
-    if (!(image_group->frame_buffers))
-    {
-        uFatal("[ vulkan ] Unable to allocate frame buffer array.\n");
-    }
-
-    for (u32 image_idx = 0; image_idx < image_group->num_images; image_idx++)
-    {
-        VkFramebufferCreateInfo frame_buffer_create_info = {};
-        frame_buffer_create_info.sType                   = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        frame_buffer_create_info.renderPass              = render_info->render_pass;
-        frame_buffer_create_info.attachmentCount         = 1;
-        frame_buffer_create_info.pAttachments            = &(image_group->image_views[image_idx]);
-        frame_buffer_create_info.width                   = surface_info->surface_capabilities.currentExtent.width;
-        frame_buffer_create_info.height                  = surface_info->surface_capabilities.currentExtent.height;
-        frame_buffer_create_info.layers                  = 1; // Non stereoscopic
-
-        VkResult result = vkCreateFramebuffer(v_info->logical_device,
-                                              &frame_buffer_create_info,
-                                              NULL,
-                                              &(image_group->frame_buffers[image_idx]));
-
-        if (result != VK_SUCCESS)
-        {
-            uFatal("[ vulkan ] Unable to create frame buffer.\n");
-        }
-    }
-}
-
-// [ cfarvin::TODO ] When we are rendering w/ more than one attachment:
-//                   Update this function to take the number and type of
-//                   attachments.
-__UE_inline__ void
-uCreateVulkanRenderPass()
-{
-    uVulkanInfo*        v_info       = ( uVulkanInfo* )uGetVulkanInfo();
-    uVulkanSurfaceInfo* surface_info = ( uVulkanSurfaceInfo* )uGetVulkanSurfaceInfo();
-    uVulkanRenderInfo*  render_info  = ( uVulkanRenderInfo* )uGetVulkanRenderInfo();
-
-    uAssertMsg_v(v_info, "[ vulkan ] uVulkanInfo ptr must be non null.\n");
-    uAssertMsg_v(surface_info, "[ vulkan ] uVulkanSurfaceInfo ptr must be non null.\n");
-    uAssertMsg_v(surface_info->surface_formats, "[ vulkan ] VkSurfaceFormatsKHR ptr must be non null.\n");
-    uAssertMsg_v(render_info, "[ vulkan ] uVulkanRenderInfo ptr must be non null.\n");
-
-    // [ cfarvin::TODO ] Account for these checks in the new system
-    /* uAssertMsg_v(is_rebuilding_swap_chain ||
-     * !render_info->attachment_descriptions, */
-    /*              "[ vulkan ] VkAttachmentDesctiption ptr must be null; will be
-     * " */
-    /*              "overwritten.\n"); */
-    /* uAssertMsg_v(is_rebuilding_swap_chain ||
-     * !render_info->attachment_references, */
-    /*              "[ vulkan ] VkAttachmentReference ptr must be null; will be "
-     */
-    /*              "overwritten.\n"); */
-
-    *( u32* )&render_info->num_attachments = 1;
-    *( VkAttachmentDescription** )&(render_info->attachment_descriptions) =
-      ( VkAttachmentDescription* )calloc(render_info->num_attachments, sizeof(VkAttachmentDescription));
-    if (!render_info->attachment_descriptions)
-    {
-        uFatal("[ vulkan ] Unable to allocate attachment descriptions.\n");
-    }
-
-    *( VkAttachmentReference** )&(render_info->attachment_references) =
-      ( VkAttachmentReference* )calloc(render_info->num_attachments, sizeof(VkAttachmentReference));
-    if (!render_info->attachment_references)
-    {
-        uFatal("[ vulkan ] Unable to allocate attachment references.\n");
-    }
-
-    VkSurfaceFormatKHR surface_format = (surface_info->surface_formats)[surface_info->designated_format_index];
-
-    for (u32 attachment_idx = 0; attachment_idx < render_info->num_attachments; attachment_idx++)
-    {
-        // Attachement description
-        VkAttachmentDescription* attachment_descriptions =
-          *( VkAttachmentDescription** )&(render_info->attachment_descriptions);
-
-        attachment_descriptions[attachment_idx].format  = surface_format.format;
-        attachment_descriptions[attachment_idx].samples = VK_SAMPLE_COUNT_1_BIT; // Note: 1 == No MSAA
-        attachment_descriptions[attachment_idx].loadOp =
-          VK_ATTACHMENT_LOAD_OP_CLEAR; // [ cfarvin::PERF ] expensive or nominal?
-        attachment_descriptions[attachment_idx].storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
-        attachment_descriptions[attachment_idx].stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        attachment_descriptions[attachment_idx].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        attachment_descriptions[attachment_idx].initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
-        attachment_descriptions[attachment_idx].finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-
-        // Attachment reference
-        VkAttachmentReference* color_attachment_reference =
-          *( VkAttachmentReference** )&(render_info->attachment_references);
-
-        color_attachment_reference[attachment_idx].attachment = 0; // Read: "Attachment index"
-        color_attachment_reference[attachment_idx].layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    }
-
-    // Subpasses
-    // Note: References layout(location = 0) in frag shader.
-    VkSubpassDependency subpass_dependency = {};
-    subpass_dependency.srcSubpass          = VK_SUBPASS_EXTERNAL; // Indicates this is the first subpass to be run
-    subpass_dependency.dstSubpass          = 0;                   // Index of this subpass in the pSubpasses array
-    subpass_dependency.srcStageMask        = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT; // Stage to wait on.
-    subpass_dependency.srcAccessMask       = 0; // Types of operations to wait on in that ^ stage.
-    subpass_dependency.dstStageMask        = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT; // Stage to wait on.
-    subpass_dependency.dstAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT; // Types of operations to wait on in
-                                                                                   // that ^ stage.
-
-    VkSubpassDescription subpass_description = {};
-    subpass_description.pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpass_description.colorAttachmentCount = render_info->num_attachments;
-    subpass_description.pColorAttachments    = render_info->attachment_references;
-
-    // Render pass
-    VkRenderPassCreateInfo render_pass_create_info = {};
-    render_pass_create_info.sType                  = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    render_pass_create_info.attachmentCount        = render_info->num_attachments;
-    render_pass_create_info.pAttachments           = render_info->attachment_descriptions;
-    render_pass_create_info.subpassCount           = 1;
-    render_pass_create_info.pSubpasses             = &subpass_description;
-    render_pass_create_info.dependencyCount        = 1;
-    render_pass_create_info.pDependencies          = &subpass_dependency;
-
-    VkResult result = vkCreateRenderPass(v_info->logical_device,
-                                         &render_pass_create_info,
-                                         NULL,
-                                         ( VkRenderPass* )&(render_info->render_pass));
-
-    if (result != VK_SUCCESS)
-    {
-        uFatal("[ vulkan ] Unable to create render pass.\n");
-    }
-}
-
-// [ cfarvin::TODO ] It may be that each application needs to implement this
-// function on their own,
-//                   and sometimes with different attributes for the vk
-//                   structures within. In that case, the engine could at least
-//                   provide default versions of these structures.
-void
-uCreateVulkanGraphicsPipeline(const size_t                                          num_shader_stage_create_infos,
-                              const VkPipelineShaderStageCreateInfo* const restrict shader_stage_create_infos)
-{
-    uVulkanInfo*        v_info       = ( uVulkanInfo* )uGetVulkanInfo();
-    uVulkanSurfaceInfo* surface_info = ( uVulkanSurfaceInfo* )uGetVulkanSurfaceInfo();
-    uVulkanRenderInfo*  render_info  = ( uVulkanRenderInfo* )uGetVulkanRenderInfo();
-
-    uAssertMsg_v(v_info, "[ vulkan ] uVulkanInfo ptr must be non null.\n");
-    uAssertMsg_v(v_info->logical_device, "[ vulkan ] VkPhysical device must be non zero.\n");
-    uAssertMsg_v(surface_info, "[ vulkan ] uVulkanSurfaceInfo ptr must be non null.\n");
-    uAssertMsg_v(render_info, "[ vulkan ] uVulkanRenderInfo ptr must be non null.\n");
-
-    // [ cfarvin::TODO ] Added fn params, but have not yet added uassertmsg checks
-
-    // Vertex input
-    VkPipelineVertexInputStateCreateInfo vertex_input_create_info = {};
-    vertex_input_create_info.sType                         = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertex_input_create_info.vertexBindingDescriptionCount = 0;
-    vertex_input_create_info.pVertexBindingDescriptions    = NULL;
-    vertex_input_create_info.vertexAttributeDescriptionCount = 0;
-    vertex_input_create_info.pVertexAttributeDescriptions    = NULL;
-
-    // Input assembly
-    VkPipelineInputAssemblyStateCreateInfo input_assembly_create_info = {};
-    input_assembly_create_info.sType                  = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    input_assembly_create_info.topology               = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-    input_assembly_create_info.primitiveRestartEnable = VK_FALSE;
-
-    // Viewport
-    VkViewport frame_buffer_viewport = {};
-    frame_buffer_viewport.x          = 0.0f;
-    frame_buffer_viewport.y          = 0.0f;
-    frame_buffer_viewport.width      = ( r32 )surface_info->surface_capabilities.currentExtent.width;
-    frame_buffer_viewport.height     = ( r32 )surface_info->surface_capabilities.currentExtent.height;
-    frame_buffer_viewport.minDepth   = 0.0f;
-    frame_buffer_viewport.maxDepth   = 1.0f;
-
-    // Scissor
-    VkRect2D frame_buffer_scissor = {};
-    frame_buffer_scissor.offset.x = 0;
-    frame_buffer_scissor.offset.y = 0;
-    frame_buffer_scissor.extent   = surface_info->surface_capabilities.currentExtent;
-
-    // Viewport state
-    VkPipelineViewportStateCreateInfo frame_buffer_viewport_create_info = {};
-    frame_buffer_viewport_create_info.sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-    frame_buffer_viewport_create_info.viewportCount = 1;
-    frame_buffer_viewport_create_info.pViewports    = &frame_buffer_viewport;
-    frame_buffer_viewport_create_info.scissorCount  = 1;
-    frame_buffer_viewport_create_info.pScissors     = &frame_buffer_scissor;
-
-    // Rasterizer
-    VkPipelineRasterizationStateCreateInfo raster_create_info = {};
-    raster_create_info.sType                   = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-    raster_create_info.depthClampEnable        = VK_FALSE;
-    raster_create_info.rasterizerDiscardEnable = VK_FALSE;
-    raster_create_info.polygonMode             = VK_POLYGON_MODE_FILL;
-    raster_create_info.lineWidth               = 1.0f;
-    raster_create_info.cullMode                = VK_CULL_MODE_BACK_BIT;
-    raster_create_info.frontFace               = VK_FRONT_FACE_CLOCKWISE;
-    raster_create_info.depthBiasEnable         = VK_FALSE;
-    raster_create_info.depthBiasConstantFactor = 0.0f;
-    raster_create_info.depthBiasClamp          = 0.0f;
-    raster_create_info.depthBiasSlopeFactor    = 0.0f;
-
-    // Multisampling
-    VkPipelineMultisampleStateCreateInfo multi_sample_create_info = {};
-    multi_sample_create_info.sType                 = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-    multi_sample_create_info.sampleShadingEnable   = VK_FALSE;
-    multi_sample_create_info.rasterizationSamples  = VK_SAMPLE_COUNT_1_BIT;
-    multi_sample_create_info.minSampleShading      = 1.0f;
-    multi_sample_create_info.pSampleMask           = NULL;
-    multi_sample_create_info.alphaToCoverageEnable = VK_FALSE;
-    multi_sample_create_info.alphaToOneEnable      = VK_FALSE;
-
-    // Depth stencil [ currently off ]
-    VkPipelineDepthStencilStateCreateInfo* depth_stencil_create_info = NULL;
-
-    // Color blending
-    // Note: VkPipelineColorBlendStateCreateInfo builds global state.
-    //       VkPipelineColorBlendAttachmentState sets local state per attached
-    //       frame buffer.
-    VkPipelineColorBlendAttachmentState color_blend_attachment = {};
-    color_blend_attachment.colorWriteMask =
-      VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-    color_blend_attachment.blendEnable         = VK_FALSE;
-    color_blend_attachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
-    color_blend_attachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-    color_blend_attachment.colorBlendOp        = VK_BLEND_OP_ADD;
-    color_blend_attachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-    color_blend_attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-    color_blend_attachment.alphaBlendOp        = VK_BLEND_OP_ADD;
-
-    VkPipelineColorBlendStateCreateInfo color_blend_create_info = {};
-    color_blend_create_info.sType             = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-    color_blend_create_info.logicOpEnable     = VK_FALSE;
-    color_blend_create_info.logicOp           = VK_LOGIC_OP_COPY;
-    color_blend_create_info.attachmentCount   = 1;
-    color_blend_create_info.pAttachments      = &color_blend_attachment;
-    color_blend_create_info.blendConstants[0] = 0.0f;
-    color_blend_create_info.blendConstants[1] = 0.0f;
-    color_blend_create_info.blendConstants[2] = 0.0f;
-    color_blend_create_info.blendConstants[3] = 0.0f;
-
-    // Dynamic state
-    // Note: Causes previous configuration to be ignored, and information to be
-    // supplied at drawing time.
-    VkDynamicState dynamic_states[2] = {};
-    dynamic_states[0]                = VK_DYNAMIC_STATE_VIEWPORT;
-    dynamic_states[1]                = VK_DYNAMIC_STATE_LINE_WIDTH;
-
-    VkPipelineDynamicStateCreateInfo dynamic_state_create_info = {};
-    dynamic_state_create_info.sType                            = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-    dynamic_state_create_info.dynamicStateCount                = 2;
-    dynamic_state_create_info.pDynamicStates                   = dynamic_states;
-
-    // Pipeline layout
-    VkPipelineLayoutCreateInfo pipeline_layout_create_info = {};
-    pipeline_layout_create_info.sType                      = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipeline_layout_create_info.setLayoutCount             = 0;
-    pipeline_layout_create_info.pSetLayouts                = NULL;
-    pipeline_layout_create_info.pushConstantRangeCount     = 0;
-    pipeline_layout_create_info.pPushConstantRanges        = NULL;
-
-    VkResult result = vkCreatePipelineLayout(v_info->logical_device,
-                                             &pipeline_layout_create_info,
-                                             NULL,
-                                             ( VkPipelineLayout* )&(render_info->pipeline_layout));
-    if (result != VK_SUCCESS)
-    {
-        uFatal("[ vulkan ] Unable to create pipeline layout.\n");
-    }
-
-    // Create graphics pipeline
-    VkGraphicsPipelineCreateInfo graphics_pipeline_create_info = {};
-    graphics_pipeline_create_info.sType                        = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-
-    graphics_pipeline_create_info.stageCount          = num_shader_stage_create_infos;
-    graphics_pipeline_create_info.pStages             = shader_stage_create_infos;
-    graphics_pipeline_create_info.pVertexInputState   = &vertex_input_create_info;
-    graphics_pipeline_create_info.pInputAssemblyState = &input_assembly_create_info;
-    graphics_pipeline_create_info.pViewportState      = &frame_buffer_viewport_create_info;
-    graphics_pipeline_create_info.pRasterizationState = &raster_create_info;
-    graphics_pipeline_create_info.pMultisampleState   = &multi_sample_create_info;
-    graphics_pipeline_create_info.pDepthStencilState  = depth_stencil_create_info; // Currently off
-    graphics_pipeline_create_info.pColorBlendState    = &color_blend_create_info;
-    graphics_pipeline_create_info.pDynamicState       = NULL; // Filled out, not using.
-    graphics_pipeline_create_info.layout              = render_info->pipeline_layout;
-    graphics_pipeline_create_info.renderPass          = render_info->render_pass;
-    graphics_pipeline_create_info.subpass             = 0; // Read: "Subpass index"
-    graphics_pipeline_create_info.basePipelineHandle  = NULL;
-    graphics_pipeline_create_info.basePipelineIndex   = -1;
-
-    result = vkCreateGraphicsPipelines(v_info->logical_device,
-                                       VK_NULL_HANDLE,
-                                       1,
-                                       &graphics_pipeline_create_info,
-                                       NULL,
-                                       ( VkPipeline* )&(render_info->graphics_pipeline));
-
-    if (result != VK_SUCCESS)
-    {
-        uFatal("[ vulkan ] Unable to create graphics pipeline.\n");
-    }
-}
-
-__UE_inline__ void
-uCreateVulkanImageViews()
-{
-    uVulkanInfo*        v_info       = ( uVulkanInfo* )uGetVulkanInfo();
-    uVulkanSurfaceInfo* surface_info = ( uVulkanSurfaceInfo* )uGetVulkanSurfaceInfo();
-    uVulkanImageGroup*  image_group  = ( uVulkanImageGroup* )uGetVulkanImageGroup();
-
-    uAssertMsg_v(v_info, "[ vulkan ] uVulkanInfo ptr must be non null.\n");
-    uAssertMsg_v(v_info->logical_device, "[ vulkan ] VkDevice ptr must be non null.\n");
-    uAssertMsg_v(image_group, "[ vulkan ] uVulkanImageGroup ptr must be non null.\n");
-    uAssertMsg_v(image_group->images, "[ vulkan ] VkImages ptr must be non null.\n");
-    uAssertMsg_v(image_group->num_images, "[ vulkan ] VkImage quantity must be non zero.\n");
-    uAssertMsg_v(image_group->image_views, "[ vulkan ] VkImages ptr must be non null.\n");
-    uAssertMsg_v(surface_info, "[ vulkan ] uVulkanSurfaceInfo must be non null.\n");
-    uAssertMsg_v(surface_info->surface_formats, "[ vulkan ] VkSurfaceFormatKHR ptr must be non null.\n");
-
-    VkSurfaceFormatKHR* surface_formats = ( VkSurfaceFormatKHR* )surface_info->surface_formats;
-    for (u32 image_idx = 0; image_idx < image_group->num_images; image_idx++)
-    {
-        // Fill create info
-        VkImageViewCreateInfo image_view_create_info = {};
-
-        image_view_create_info.sType    = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        image_view_create_info.image    = (image_group->images)[image_idx];
-        image_view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        image_view_create_info.format   = surface_formats[surface_info->designated_format_index].format;
-
-        image_view_create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-        image_view_create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-        image_view_create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-        image_view_create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-
-        image_view_create_info.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-        image_view_create_info.subresourceRange.baseMipLevel   = 0;
-        image_view_create_info.subresourceRange.levelCount     = 1;
-        image_view_create_info.subresourceRange.baseArrayLayer = 0;
-        image_view_create_info.subresourceRange.layerCount     = 1;
-
-        // Create image view
-        VkResult result = vkCreateImageView(v_info->logical_device,
-                                            &image_view_create_info,
-                                            NULL,
-                                            &(image_group->image_views[image_idx]));
-
-        if (result != VK_SUCCESS)
-        {
-            uFatal("[ vulkan ] Unable to create image view.\n");
-        }
-    }
-}
-
-void
-uVulkanExtractUniqueQueueFamilies(const uVulkanQueueInfo* const restrict queue_info,
-                                  u32* const restrict                    unique_queue_array,
-                                  const u8                               num_possible_queues,
-                                  u8* const restrict                     unique_queues_found)
-{
-    uAssertMsg_v(queue_info, "[ vulkan ] The uVulkanQueueInfo ptr must be non null.\n");
-    uAssertMsg_v(unique_queue_array, "[ vulkan ] The 'unique_queue_array' ptr must be non null.\n");
-    uAssertMsg_v(num_possible_queues, "[ vulkan ] The number of possible queues must be non zero.\n");
-    uAssertMsg_v(unique_queues_found, "[ vulkan ] The 'num_queues_found' ptr must be non null.\n");
-
-    if (num_possible_queues)
-    {
-        for (u8 unchecked_queue_idx = 0; unchecked_queue_idx < num_possible_queues; unchecked_queue_idx++)
-        {
-            // Create graphics queue as unique by default.
-            if (unchecked_queue_idx == 0)
-            {
-                unique_queue_array[(*unique_queues_found)] = queue_info->designated_graphics_index;
-                (*unique_queues_found)++;
-            }
-            else
-            {
-                bool is_unique = true;
-
-                // Check present queue uniqueness
-                for (u8 unique_queue_idx = 0; unique_queue_idx < (*unique_queues_found); unique_queue_idx++)
-                {
-                    if (queue_info->designated_present_index == unique_queue_array[unique_queue_idx])
-                    {
-                        is_unique = false;
-                        break;
-                    }
-                }
-
-                if (is_unique)
-                {
-                    unique_queue_array[(*unique_queues_found)] = queue_info->designated_present_index;
-                    (*unique_queues_found)++;
-                }
-            }
-        }
-    }
-}
-
-__UE_inline__ void
-uCreateVulkanSwapChainCore(const VkDevice                           logical_device,
-                           const VkSurfaceKHR                       surface,
-                           const VkSurfaceFormatKHR* const restrict surface_formats,
-                           const VkPresentModeKHR* const restrict   present_modes,
-                           const VkSurfaceCapabilitiesKHR           surface_capabilities,
-                           const u32                                graphics_queue_index,
-                           const u32                                present_queue_index,
-                           const uGameWindow* const restrict        game_window)
-{
-    // Select a suitable swapchain
-    bool swap_chain_selected = uSelectVulkanSwapChain(game_window);
-    if (!swap_chain_selected)
-    {
-        uFatal("[ vulkan ] Unable to select a suitable swap chain.\n");
-    }
-
-    //
-    // [ cfarvin::RETURN ] You were just about to fix some compilation errors
-    // while pulling out a
-    //                     version of each function involved in swap chain
-    //                     recreation dedicated to both the first creation (using
-    //                     singleton patterns) and the re-creation (using raw
-    //                     vulkan objects). May be a good idea to review your [
-    //                     cfarvin::<> ] notes through this document upon return,
-    //                     as you've commented and altered a lot of things out but
-    //                     have strongly documented those changes each time. Good
-    //                     luck! Talking to yourself seems to really, really,
-    //                     help. You made awesome progress this morning and should
-    //                     feel wonderful about it. <3
-    //
-    // Determine swap chain image capacity
-    u32 min_image_count = surface_info->surface_capabilities.minImageCount;
-    u32 max_image_count = surface_info->surface_capabilities.maxImageCount;
-
-    // [ cfarvin::TODO ] Should the designated image count be the number of frames
-    // in flight?
-    //                   If so, we need to link those two varaibles; they could be
-    //                   completely different values presently.
-
-    // Request an additional image
-    u32 designated_image_count = min_image_count + 1;
-
-    // Ensure designated count is within bounds
-    bool image_count_unlimited = (max_image_count == 0);
-    if (!image_count_unlimited && (designated_image_count > max_image_count))
-    {
-        designated_image_count = max_image_count;
-    }
-
-    // Determine if queues are unique
-    u32 unique_queue_array[uVULKAN_NUM_QUEUES] = {};
-    u8  unique_queues_found                    = 0;
-    uVulkanExtractUniqueQueueFamilies(queue_info, &(unique_queue_array[0]), uVULKAN_NUM_QUEUES, &unique_queues_found);
-
-    if (!unique_queues_found)
-    {
-        uFatal("[ vulkan ] Was unable to find any queues.\n");
-    }
-
-    const VkSurfaceFormatKHR* surface_formats = surface_info->surface_formats;
-    const VkPresentModeKHR*   present_modes   = surface_info->present_modes;
-
-    // File create info
-    VkSwapchainCreateInfoKHR swap_chain_create_info = {};
-    swap_chain_create_info.sType                    = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-    swap_chain_create_info.surface                  = surface_info->surface;
-    swap_chain_create_info.minImageCount            = designated_image_count;
-    swap_chain_create_info.imageFormat              = surface_formats[surface_info->designated_format_index].format;
-    swap_chain_create_info.imageColorSpace          = surface_formats[surface_info->designated_format_index].colorSpace;
-    swap_chain_create_info.imageExtent              = surface_info->surface_extent;
-    swap_chain_create_info.imageArrayLayers         = 1;
-    swap_chain_create_info.imageUsage               = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // Render directly to images
-    swap_chain_create_info.preTransform             = surface_info->surface_capabilities.currentTransform;
-    swap_chain_create_info.compositeAlpha           = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR; // Ignore alpha channel
-    swap_chain_create_info.presentMode              = present_modes[surface_info->designated_present_index];
-    swap_chain_create_info.clipped                  = VK_TRUE;
-    swap_chain_create_info.oldSwapchain             = image_group->old_swap_chain;
-
-    if (unique_queues_found == 1)
-    {
-        // Queues were unique/identical
-        swap_chain_create_info.imageSharingMode      = VK_SHARING_MODE_EXCLUSIVE;
-        swap_chain_create_info.queueFamilyIndexCount = 0;
-        swap_chain_create_info.pQueueFamilyIndices   = NULL;
-    }
-    else
-    {
-        // Queues were not unique/identical
-        swap_chain_create_info.imageSharingMode      = VK_SHARING_MODE_CONCURRENT;
-        swap_chain_create_info.queueFamilyIndexCount = unique_queues_found;
-        swap_chain_create_info.pQueueFamilyIndices   = &(unique_queue_array[0]);
-    }
-
-    // Create swap chain
-    VkResult result = vkCreateSwapchainKHR(v_info->logical_device,
-                                           &swap_chain_create_info,
-                                           NULL,
-                                           ( VkSwapchainKHR* )&(image_group->swap_chain));
-
-    if (result != VK_SUCCESS)
-    {
-        uFatal("[ vulkan ] Unable to create swap chain.\n");
-    }
-
-    // Get handles to swap chain images
-    u32 reported_image_count = designated_image_count;
-    result = vkGetSwapchainImagesKHR(v_info->logical_device, image_group->swap_chain, &designated_image_count, NULL);
-
-    if (result != VK_SUCCESS)
-    {
-        uFatal("[ vulkan ] Unable to obtain swap chain image count.\n");
-    }
-
-    if (!reported_image_count)
-    {
-        uFatal("[ vulkan ] Swap chain reports no images.\n");
-    }
-
-    if (designated_image_count != reported_image_count)
-    {
-        uWarning("[ vulkan ] Swap chain images count != designated count.\n");
-        designated_image_count = reported_image_count;
-    }
-
-    image_group->images      = ( VkImage* )calloc(designated_image_count, sizeof(VkImage));
-    image_group->image_views = ( VkImageView* )calloc(designated_image_count, sizeof(VkImageView));
-    result                   = vkGetSwapchainImagesKHR(v_info->logical_device,
-                                     image_group->swap_chain,
-                                     &designated_image_count,
-                                     image_group->images);
-
-    if (result != VK_SUCCESS)
-    {
-        uFatal("[ vulkan ] Unable to set swap chain image count handle(s).\n");
-    }
-
-    // Set image count
-    *( u32* )&(image_group->num_images) = designated_image_count;
-}
-
-__UE_inline__ void
-uCreateVulkanSwapChain(const uGameWindow* const restrict game_window)
-{
-    uVulkanInfo*        v_info       = ( uVulkanInfo* )uGetVulkanInfo();
-    uVulkanQueueInfo*   queue_info   = ( uVulkanQueueInfo* )uGetVulkanQueueInfo();
-    uVulkanSurfaceInfo* surface_info = ( uVulkanSurfaceInfo* )uGetVulkanSurfaceInfo();
-    uVulkanImageGroup*  image_group  = ( uVulkanImageGroup* )uGetVulkanImageGroup();
-
-    uAssertMsg_v(v_info, "[ vulkan ] uVulkanInfo ptr must be non null.\n");
-    uAssertMsg_v(v_info->logical_device, "[ vulkan ] VkLogicalDevice must be non zero.\n");
-    uAssertMsg_v(surface_info, "[ vulkan ] uVulkanSurfaceInfo ptr must be non null.\n");
-    uAssertMsg_v(surface_info->surface, "[ vulkan ] VkSurfaceKHR ptr must be non null.\n");
-    uAssertMsg_v(queue_info, "[ vulkan ] uVulkanQueueInfo ptr must be non null.\n");
-    uAssertMsg_v(surface_info->surface_formats, "[ vulkan ] VkSurfaceFormatKHR ptr must be non null.\n");
-    uAssertMsg_v(surface_info->present_modes, "[ vulkan ] VkPresentModeKHR ptr must be non null.\n");
-    uAssertMsg_v(image_group, "[ vulkan ] uVulkanImageGroup ptr must be non null.\n");
-    uAssertMsg_v(image_group->swap_chain, "[ vulkan ] Swap chain ptr must be non null.\n");
-    uAssertMsg_v(!(*image_group->swap_chain), "[ vulkan ] Swap chain must be null; will be overwritten.\n");
-    uAssertMsg_v(image_group->images, "[ vulkan ] Images ptr must be non null.\n");
-    uAssertMsg_v(!(*image_group->images), "[ vulkan ] Images must be null; will be overwritten.\n");
-    uAssertMsg_v(image_group->image_views, "[ vulkan ] Image views ptr must be non null.\n");
-    uAssertMsg_v(!(*image_group->image_views), "[ vulkan ] Image views must be null; will be overwritten.\n");
-
-    uCreateVulkanSwapChainCore(v_info->logical_device,
-                               surface_info->surface,
-                               surface_info->surface_formats,
-                               surface_info->present_modes,
-                               surface_info->surface_capabilities,
-                               surface_info->surface_extent,
-                               queue_info->designated_graphics_index,
-                               queue_info->designated_present_index,
-                               game_window);
-}
-
-void
-#if __UE_debug__ == 1 || __UE_vkForceValidation__ == 1
-uCreateVulkanLogicalDevice(const char** const restrict instance_validation_layer_names,
-                           const u16                   num_instance_validation_layer_names,
-#else
-uCreateVulkanLogicalDevice(
-#endif // __UE_debug__ == 1 || __UE_vkForceValidation__ == 1
-                           const char** const restrict user_device_extension_names,
-                           const u16                   num_user_device_extension_names)
-{
-    uVulkanInfo*      v_info     = ( uVulkanInfo* )uGetVulkanInfo();
-    uVulkanQueueInfo* queue_info = ( uVulkanQueueInfo* )uGetVulkanQueueInfo();
-
-    uAssertMsg_v(v_info, "[ vulkan ] uVulkanInfo ptr must be non null.\n");
-    uAssertMsg_v(v_info->physical_device, "[ vulkan ] VkPhysicalDevice must be non zero.\n");
-    uAssertMsg_v(!v_info->logical_device, "[ vulkan ] VkDevice must be zero; will be overwritten.\n");
-    uAssertMsg_v(queue_info, "[ vulkan ] Queue indices ptr must be non null\n");
-    uAssertMsg_v(queue_info->queues, "[ vulkan ] VkQueue ptr must be non null.\n");
-
-#if __UE_debug__ == 1 || __UE_vkForceValidation__ == 1
-    if (num_instance_validation_layer_names)
-    {
-        uAssertMsg_v(instance_validation_layer_names && *instance_validation_layer_names,
-                     "[ vulkan ] If the instance validation layer quanitity is non "
-                     "zero, the names ptr must be non null\n");
-    }
-#endif // __UE_debug__ == 1 || __UE_vkForceValidation__ == 1
-
-    if (num_user_device_extension_names)
-    {
-        uAssertMsg_v(user_device_extension_names && *user_device_extension_names,
-                     "[ vulkan ] If the device extension quanitity is non zero, "
-                     "the names ptr must be non null\n");
-    }
-
-    // Extract unique queue family index values from uVulkanQueueInfo
-    u8  num_unique_queues                 = 0;
-    u32 unique_queues[uVULKAN_NUM_QUEUES] = {};
-    uVulkanExtractUniqueQueueFamilies(queue_info, &(unique_queues[0]), uVULKAN_NUM_QUEUES, &num_unique_queues);
-
-    // Create logical device create info structure(s)
-    VkDeviceQueueCreateInfo* device_queue_create_infos =
-      ( VkDeviceQueueCreateInfo* )calloc(num_unique_queues, sizeof(VkDeviceQueueCreateInfo));
-    if (!device_queue_create_infos)
-    {
-        uFatal("[ vulkan ] Unable to create logical device.\n");
-    }
-
-    for (u32 queue_family_idx = 0; queue_family_idx < num_unique_queues; queue_family_idx++)
-    {
-        r32 device_queue_priorities                                  = 1.0f;
-        device_queue_create_infos[queue_family_idx].sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-        device_queue_create_infos[queue_family_idx].queueFamilyIndex = queue_family_idx;
-        device_queue_create_infos[queue_family_idx].queueCount       = 1;
-
-        // All queues have equal priority.
-        device_queue_create_infos[queue_family_idx].pQueuePriorities = &device_queue_priorities;
-    }
-
-    // [ cfarvin::TODO ] Added the vkGetPhysicalDeviceFeatures call a while after
-    // the original
-    //                   implementation. I think this was an oversight originally;
-    //                   let's be sure. If there are sudden errors in this part of
-    //                   the code; this could be why.
-    VkPhysicalDeviceFeatures physical_device_features = {};
-    vkGetPhysicalDeviceFeatures(v_info->physical_device, *physical_device_features);
-
-    VkDeviceCreateInfo logical_device_create_info   = {};
-    logical_device_create_info.sType                = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    logical_device_create_info.pQueueCreateInfos    = device_queue_create_infos;
-    logical_device_create_info.queueCreateInfoCount = num_unique_queues;
-    logical_device_create_info.pEnabledFeatures     = &physical_device_features;
-
-#if __UE_debug__ == 1 || __UE_vkForceValidation__ == 1
-    logical_device_create_info.enabledLayerCount   = num_instance_validation_layer_names;
-    logical_device_create_info.ppEnabledLayerNames = ( const char** const )instance_validation_layer_names;
-#endif // __UE_debug__ == 1 || __UE_vkForceValidation__ == 1
-
-    logical_device_create_info.enabledExtensionCount   = num_user_device_extension_names;
-    logical_device_create_info.ppEnabledExtensionNames = ( const char** const )user_device_extension_names;
-
-    VkResult device_creation_success =
-      vkCreateDevice(v_info->physical_device, &logical_device_create_info, NULL, ( VkDevice* )&v_info->logical_device);
-
-    if (device_creation_success != VK_SUCCESS)
-    {
-        uFatal("[ vulkan ] Unable to create logical device.\n");
-    }
-
-    vkGetDeviceQueue(v_info->logical_device,
-                     queue_info->designated_graphics_index,
-                     0,
-                     ( VkQueue* )(&(queue_info->queues)[uVULKAN_GRAPHICS_QUEUE_INDEX]));
-
-    vkGetDeviceQueue(v_info->logical_device,
-                     queue_info->designated_present_index,
-                     0,
-                     ( VkQueue* )(&(queue_info->queues)[uVULKAN_PRESENT_QUEUE_INDEX]));
-
-    if (device_queue_create_infos)
-    {
-        free(device_queue_create_infos);
-    }
-}
-
-// [ cfarvin::TODO ] Define device feature requirements
+uvkDestroySurface(VkInstance instance, VkSurfaceKHR surface);
+
+/*
+ * @brief Create and validate a vulkan instance.
+ *
+ * @param[in] application_name The name of the application.
+ * @param[in] user_validation_layer_names An array of instance layers to query and enable.
+ * @param[in] user_validation_layer_name_count The number of validation layers.
+ * @param[in] user_instance_extension_names An array of instance extensions to query and enable.
+ * @param[in] user_instance_extension_name_count The number of instance layers.
+ * @param[out] return_vulkan_instance The Vulkan instance created by this function.
+ */
 bool
-uValidateVulkanDeviceFeaturesReqruirement(const VkPhysicalDevice physical_device)
-{
-    if (physical_device)
-    {
-    }
-
-    // Aquire physical device features
-    /* VkPhysicalDeviceFeatures device_features; */
-    /* vkGetPhysicalDeviceFeatures(physical_device, */
-    /*                             &device_features); */
-
-    return true;
-}
-
-// [ cfarvin::TODO ] Define device property requirements
-bool
-uValidateVulkanDevicePropertiesReqruirement(const VkPhysicalDevice physical_device)
-{
-    if (physical_device)
-    {
-    }
-
-    // Aquire physical device properties
-    /* VkPhysicalDeviceProperties device_properties; */
-    /* vkGetPhysicalDeviceProperties(physical_device, */
-    /*                               &device_properties); */
-
-    return true;
-}
-
-bool
-uValidateVulkanDeviceExtensionsReqruirement(const VkPhysicalDevice physical_device,
-                                            const char** restrict  user_device_extension_names,
-                                            const u16              num_user_device_extension_names)
-{
-    if (user_device_extension_names)
-    {
-        uAssertMsg_v(user_device_extension_names && *user_device_extension_names,
-                     "[ vulkan ] If the device extension quanitity is non zero, "
-                     "the names ptr must be non null\n");
-    }
-
-    u16 num_validated_extension_names = 0;
-    uQueryVulkanDeviceExtensions(&physical_device,
-                                 user_device_extension_names,
-                                 num_user_device_extension_names,
-                                 &num_validated_extension_names);
-
-    const char extension_name_err_msg[] = "[ vulkan ] Unable to verify user extension names.\n";
-    uAssertMsg_v(num_validated_extension_names == num_user_device_extension_names, extension_name_err_msg);
-    if (num_validated_extension_names != num_user_device_extension_names)
-    {
-        uVkVerbose(extension_name_err_msg);
-        return false;
-    }
-
-    return true;
-}
-
-bool
-uValidateVulkanDeviceQueueRequirement(const VkPhysicalDevice                   physical_device,
-                                      const uVulkanSurfaceInfo* const restrict surface_info,
-                                      uVulkanQueueInfo* const restrict         queue_info)
-{
-    uAssertMsg_v(surface_info, "[ vulkan ] The uVulkanSurfaceInfo ptr must be non null.\n");
-    uAssertMsg_v(surface_info->surface, "[ vulkan ] The VKSurfaceKHR must be non zero.\n");
-    uAssertMsg_v(queue_info, "[ vulkan ] The uVulkanQueueInfo ptr must be non null.\n");
-
-    typedef struct
-    {
-        u32  index;
-        bool validated;
-    } uQueueFamilyPair;
-    u32 num_queues = 0;
-
-    // Get queue family count
-    u32 queue_family_count = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, NULL);
-    if (!queue_family_count)
-    {
-        return false;
-    }
-
-    // Get queue families
-    VkQueueFamilyProperties* queue_family_props =
-      ( VkQueueFamilyProperties* )calloc(queue_family_count, sizeof(VkQueueFamilyProperties));
-    if (!queue_family_props)
-    {
-        return false;
-    }
-
-    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, queue_family_props);
-
-    // Require graphics family
-    uQueueFamilyPair graphics_pair = {};
-    num_queues++;
-
-    // Require present family
-    uQueueFamilyPair present_pair = {};
-    num_queues++;
-
-    bool queues_satisfied = false;
-    for (u32 queue_idx = 0; queue_idx < queue_family_count; queue_idx++)
-    {
-        // Check grahpics capability for this family
-        if (queue_family_props[queue_idx].queueFlags & VK_QUEUE_GRAPHICS_BIT)
-        {
-            graphics_pair.index     = queue_idx;
-            graphics_pair.validated = true;
-        }
-
-        // Check present capability for this family
-        VkBool32 present_capability = false;
-        vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, queue_idx, surface_info->surface, &present_capability);
-
-        if (present_capability)
-        {
-            present_pair.index     = queue_idx;
-            present_pair.validated = true;
-        }
-
-        // Break when all conditions are met
-        if (graphics_pair.validated && present_pair.validated)
-        {
-            // Store family indices for each required queue.
-            *( u32* )&queue_info->designated_graphics_index = graphics_pair.index;
-            *( u32* )&queue_info->designated_present_index  = present_pair.index;
-
-            // Issue perf warning for different graphics/presentation queue
-            if (graphics_pair.index != present_pair.index)
-            {
-                uWarning("[ vulkan ] [ perf ] Different graphics and prsent queue "
-                         "families chosen.\n");
-            }
-
-            queues_satisfied = true;
-            break;
-        }
-    }
-
-    if (queue_family_props)
-    {
-        free(queue_family_props);
-    }
-
-    // Issue engine level warning to update uVULKAN_NUM_QUEUES
-    if (uVULKAN_NUM_QUEUES != num_queues)
-    {
-        uFatal("[ engine ][ vulkan ] uVulkanInfo.queues length: %d. %d queues were "
-               "checked during physical device "
-               "creation.\n",
-               uVULKAN_NUM_QUEUES,
-               num_queues);
-    }
-
-    return queues_satisfied;
-}
-
-__UE_inline__ void
-uSelectVulkanSwapChainExtent(const uGameWindow* restrict const game_window)
-{
-    uVulkanSurfaceInfo* surface_info = ( uVulkanSurfaceInfo* )uGetVulkanSurfaceInfo();
-
-    uAssertMsg_v(surface_info, "[ vulkan ] uVulkanSurfaceInfo ptr must be non null.\n");
-
-    VkSurfaceCapabilitiesKHR surface_capabilities = surface_info->surface_capabilities;
-    u32*                     extent_width         = ( u32* )(( VkExtent2D* )&(surface_info->surface_extent).width);
-    u32*                     extent_height        = ( u32* )(( VkExtent2D* )&(surface_info->surface_extent).height);
-
-    // Note: Some window managers use u32_MAX as a magic value which indicates
-    // that the extent must be manually set up.
-    u32 u32_MAX = ~( u32 )0;
-    if (surface_capabilities.currentExtent.width != u32_MAX)
-    {
-        *extent_width  = surface_capabilities.currentExtent.width;
-        *extent_height = surface_capabilities.currentExtent.height;
-    }
-    else
-    {
-        *extent_width  = game_window->width;
-        *extent_height = game_window->height;
-    }
-
-    // Ensure we do not exceed maximums
-    if (*extent_width > surface_capabilities.maxImageExtent.width)
-    {
-        uVkVerbose("[ vulkan ] Calculated extent width exceeded surface "
-                   "capabiility; capped.\n");
-        *extent_width = surface_capabilities.maxImageExtent.width;
-    }
-
-    if (*extent_height > surface_capabilities.maxImageExtent.height)
-    {
-        uVkVerbose("[ vulkan ] Calculated extent height exceeded surface "
-                   "capabiility; capped.\n");
-        *extent_height = surface_capabilities.maxImageExtent.height;
-    }
-
-    // Ensure we do not fall below minimums
-    if (*extent_width < surface_capabilities.minImageExtent.width)
-    {
-        uVkVerbose("[ vulkan ] Calculated extent width fell below surface "
-                   "capabiility; capped.\n");
-        *extent_width = surface_capabilities.minImageExtent.width;
-    }
-
-    if (*extent_height < surface_capabilities.minImageExtent.height)
-    {
-        uVkVerbose("[ vulkan ] Calculated extent height fell below surface "
-                   "capabiility; capped.\n");
-        *extent_height = surface_capabilities.minImageExtent.height;
-    }
-}
-
-__UE_inline__ bool
-uSelectVulkanSwapChain(const uGameWindow* const restrict game_window)
-{
-    uVulkanSurfaceInfo* surface_info = ( uVulkanSurfaceInfo* )uGetVulkanSurfaceInfo();
-
-    uAssertMsg_v(surface_info, "[ vulkan ] uVulkanSurfaceInfo ptr must be non null.\n");
-    if (surface_info->num_surface_formats)
-    {
-        uAssertMsg_v(surface_info->surface_formats, "[ vulkan ] VkSurfaceFormatKHR ptr must be non null.\n");
-    }
-    if (surface_info->num_present_modes)
-    {
-        uAssertMsg_v(surface_info->present_modes, "[ vulkan ] VkPresentModeKHR ptr must be non null.\n");
-    }
-
-    // Determine best available surface format
-    u32* non_const_designated_format_index = ( u32* )&(surface_info->designated_format_index);
-    bool optimal_format_found              = false;
-    for (u16 format_idx = 0; format_idx < surface_info->num_surface_formats; format_idx++)
-    {
-        if (surface_info->surface_formats[format_idx].format == VK_FORMAT_B8G8R8A8_SRGB &&
-            surface_info->surface_formats[format_idx].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
-        {
-            *non_const_designated_format_index = format_idx;
-            optimal_format_found               = true;
-            break;
-        }
-    }
-
-    if (!optimal_format_found)
-    {
-        // Issue perf warning
-        uWarning("[ vulkan ] [ perf ] 8bpp sRGB swap chain format unavailble. "
-                 "Defaulting to first format index.\n");
-    }
-
-    // Determine best available presentation mode
-    u32* non_const_designated_present_index = ( u32* )&(surface_info->designated_present_index);
-    bool suitable_present_found             = false;
-    bool optimal_present_found              = false;
-    u16  fifo_present_index                 = 0;
-    for (u16 present_idx = 0; present_idx < surface_info->num_present_modes; present_idx++)
-    {
-        VkPresentModeKHR present_mode = surface_info->present_modes[present_idx];
-        if (present_mode == VK_PRESENT_MODE_MAILBOX_KHR)
-        {
-            *non_const_designated_present_index = present_idx;
-            optimal_present_found               = true;
-            suitable_present_found              = true;
-            break;
-        }
-        else if (present_mode == VK_PRESENT_MODE_FIFO_KHR)
-        {
-            fifo_present_index     = present_idx;
-            suitable_present_found = true;
-        }
-    }
-
-    if (!suitable_present_found)
-    {
-        uFatal("[ vulkan ] Unable to find a suitable present mode.\n");
-    }
-
-    if (!optimal_present_found)
-    {
-        // Issue perf warning
-        uWarning("[ vulkan ] [ perf ] Tripple buffering present mode unavailble. "
-                 "Defaulting to FIFO.\n");
-        *non_const_designated_present_index = fifo_present_index;
-    }
-
-    // Determine best avialable swap extent
-    uSelectVulkanSwapChainExtent(game_window);
-
-    // Note: require FIFO present mode; accept any format
-    return suitable_present_found;
-}
-
-__UE_inline__ void
-uValidateVulkanSwapChainAndSurfaceCompatibility(const VkPhysicalDevice             potential_physical_device,
-                                                const VkSurface                    potential_surface,
-                                                u32* const restrict                return_num_surface_formats,
-                                                VkSurfaceFormatKHR* const restrict return_surface_formats,
-                                                u32* const restrict                return_num_present_modes,
-                                                VkPresentModeKHR* const restrict   return_present_modes)
-{
-    uAssertMsg_v(!return_num_surface_formats, "[ vulkan ] Num surface formats ptr must be null; may be overwritten.\n");
-    uAssertMsg_v(!return_surface_formats, "[ vulkan ] Surface formats ptr must be null; may be overwritten.\n");
-    uAssertMsg_v(!return_num_present_mode, "[ vulkan ] Num present modes ptr must be null; may be overwritten.\n");
-    uAssertMsg_v(!return_present_modes, "[ vulkan ] Present modes ptr must be null; may be overwritten.\n");
-
-    // Get surface capabilities
-    VkSurfaceCapabilitiesKHR* potential_surface_capabilities = NULL;
-    VkResult                  success = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(potential_physical_device,
-                                                                 potential_surface,
-                                                                 potential_surface_capabilities);
-
-    if (success != VK_SUCCESS)
-    {
-        uFatal("[ vulkan ] Could not attain surface capabilities.\n");
-    }
-
-    // Get surface formats
-    u32* potential_num_surface_formats = NULL
-      : success                        = vkGetPhysicalDeviceSurfaceFormatsKHR(potential_physical_device,
-                                                       potential_surface,
-                                                       potential_num_surface_formats,
-                                                       NULL);
-
-    if (success != VK_SUCCESS)
-    {
-        uFatal("[ vulkan ] Could not attain surface format quantity.\n");
-    }
-
-    VkSurfaceFormatKHR* potential_surface_formats = NULL;
-    if (!(*potential_num_surface_formats))
-    {
-        return false;
-    }
-
-    // [ cfarvin::REVISIT ] Remove this?
-    /* if (is_rebuilding_swap_chain && surface_info->surface_formats) */
-    /* { */
-    /*     free(( VkSurfaceFormatKHR* )surface_info->surface_formats); */
-    /* } */
-
-    // [ cfarvin::TODO ] [ MEMFREE ]
-    potential_surface_formats =
-      ( VkSurfaceFormatKHR* )malloc(potential_num_surface_formats * sizeof(VkSurfaceFormatKHR));
-
-    if (!potential_surface_formats)
-    {
-        uFatal("[ vulkan ] Unable to allocate memory for surface formats.\n");
-    }
-
-    success = vkGetPhysicalDeviceSurfaceFormatsKHR(potential_physical_device,
-                                                   potential_surface,
-                                                   potential_num_surface_formats,
-                                                   potential_surface_formats);
-
-    if (success != VK_SUCCESS)
-    {
-        uFatal("[ vulkan ] Could not attain surface formats.\n");
-    }
-
-    // Get surface present modes
-    u32* potential_num_present_modes = NULL;
-    success                          = vkGetPhysicalDeviceSurfacePresentModesKHR(potential_physical_device,
-                                                        potential_surface,
-                                                        potential_num_present_modes,
-                                                        NULL);
-    if (success != VK_SUCCESS)
-    {
-        uFatal("[ vulkan ] Could not attain present mode quantity.\n");
-    }
-
-    if (!(*num_present_modes))
-    {
-        return false;
-    }
-
-    // [ cfarvin::REVISIT ] Remove this?
-    /* if (is_rebuilding_swap_chain && surface_info->present_modes) */
-    /* { */
-    /*     free(( VkPresentModeKHR* )surface_info->present_modes); */
-    /* } */
-
-    // [ cfarvin::TODO ] [ MEMFREE ]
-    VkPresentModeKHR* potential_present_modes =
-      ( VkPresentModeKHR* )malloc(potential_num_present_modes * sizeof(VkPresentModeKHR));
-
-    if (!potential_present_modes)
-    {
-        uFatal("[ vulkan ] Unable to allocate memory for present modes.\n");
-    }
-
-    success = vkGetPhysicalDeviceSurfacePresentModesKHR(potential_physical_device,
-                                                        potential_surface,
-                                                        potential_num_present_modes);
-    if (success != VK_SUCCESS)
-    {
-        uFatal("[ vulkan ] Could not attain present modes.\n");
-    }
-
-    // Consider successful if there are present modes that are compatible with
-    // surface formats
-    if (potential_num_surface_formats && potential_num_present_modes)
-    {
-        *return_num_surface_formats = *potential_num_surface_formats;
-        *return_num_present_modes   = *potential_num_present_modes;
-
-        // [ cfarvin::TODO ] [ MEMFREE ] Make sure to free these in calling scope.
-        // Note: must be freed in calling scope.
-        size_t surface_format_bytes = potential_num_surface_formats * sizeof(VkSurfaceFormatKHR);
-        size_t present_mode_bytes   = potential_num_present_modes * sizeof(VkPresentModeKHR) return_present_modes =
-                                      ( VkSurfaceFormatKHR* )malloc(surface_format_bytes);
-        return_present_modes = ( VkPresentModeKHR* )malloc(present_modes_byts);
-
-        memcpy(return_surface_formats, potential_surface_formats, surface_format_bytes);
-        memcpy(return_present_modes, potential_present_modes, present_mode_bytes);
-    }
-}
-
-void
-uSelectVulkanPhysicalDevice(const VkPhysicalDevice** const restrict physical_device_list,
-                            VkPhysicalDevice* const restrict        return_device,
-                            uVulkanQueueInfo* const restrict        queue_info,
-                            const u32                               num_physical_devices,
-                            const char** const restrict             user_device_extension_names,
-                            const u16                               num_user_device_extension_names)
-{
-    uVulkanSurfaceInfo* surface_info = ( uVulkanSurfaceInfo* )uGetVulkanSurfaceInfo();
-
-    uAssertMsg_v(physical_device_list, "[ vulkan ] VkPhysicalDevice ptr ptr must be non null.\n");
-    uAssertMsg_v(!(*return_device), "[ vulkan ] VkPhysicalDevice ptr must be null; will be overwritten\n");
-    uAssertMsg_v(queue_info, "[ vulkan ] uVulkanQueueInfo ptr must be non null\n");
-    uAssertMsg_v(num_physical_devices, "[ vulkan ] Physical devices count must be non zero.\n");
-    uAssertMsg_v(surface_info, "[ vulkan ] uVulkanSurfaceInfo ptr must be non null.\n");
-    uAssertMsg_v(surface_info->surface, "[ vulkan ] VkSurfaceKHR must be non zero.\n");
-    for (u32 device_idx = 0; device_idx < num_physical_devices; device_idx++)
-    {
-        uAssertMsg_v(physical_device_list[device_idx],
-                     "[ vulkan ] Indices of physical_device_list must be non-null.\n");
-    }
-    if (user_device_extension_names)
-    {
-        uAssertMsg_v(user_device_extension_names && *user_device_extension_names,
-                     "[ vulkan ] If the device extension quanitity is non zero, "
-                     "the names ptr must be non null\n");
-    }
-
-    bool selection_complete = false;
-    for (u32 device_idx = 0; device_idx < num_physical_devices; device_idx++)
-    {
-        const VkPhysicalDevice potential_physical_device = *physical_device_list[device_idx];
-        if (!physical_device)
-        {
-            continue;
-        }
-
-        selection_complete = uValidateVulkanDeviceFeaturesReqruirement(physical_device) &&
-                             uValidateVulkanDevicePropertiesReqruirement(physical_device) &&
-                             uValidateVulkanDeviceQueueRequirement(physical_device, surface_info, queue_info) &&
-                             uValidateVulkanDeviceExtensionsReqruirement(physical_device,
-                                                                         user_device_extension_names,
-                                                                         num_user_device_extension_names) &&
-                             // Must query for surface and extension support before swap chain
-                             // support.
-                             uValidateVulkanSwapChainAndSurfaceCompatibility(potential_physical_device);
-
-        // Set the physical device
-        if (selection_complete)
-        {
-            *return_device = physical_device;
-
-            // If there's more than one physical device detected, report which one was
-            // chosen
-            if (num_physical_devices > 1)
-            {
-                VkPhysicalDeviceProperties physical_device_properties = {};
-                vkGetPhysicalDeviceProperties(physical_device, &physical_device_properties);
-                printf("[ vulkan ] Chosen device: %s\n", physical_device_properties.deviceName);
-            }
-
-            break;
-        }
-    }
-
-    if (!selection_complete)
-    {
-        uFatal("[ vulkan ] Unable to select a suitable physical device.\n");
-    }
-}
-
-void
-uCreateVulkanPhysicalDevice(uVulkanInfo* const restrict        v_info,
-                            uVulkanQueueInfo* const restrict   queue_info,
-                            const char** const restrict        user_device_extension_names,
-                            const u16                          num_user_device_extension_names,
-                            uVulkanSurfaceInfo* const restrict return_surface_info)
-{
-    uAssertMsg_v(v_info, "[ vulkan ] uVulkanInfo ptr must be non null.\n");
-    uAssertMsg_v(!v_info->physical_device, "[ vulkan ] VkPhysicalDevice must be zero; will be overwritten.\n");
-    uAssertMsg_v(!v_info->logical_device, "[ vulkan ] VkDevice must be zero; will be overwritten.\n");
-    uAssertMsg_v(queue_info, "[ vulkan ] uVulkanQueueInfo ptr must be non null.\n");
-    uAssertMsg_v(return_surface_info, "[ vulkan ] uVulkanSurfaceInfo ptr must be non null.\n");
-    if (num_user_device_extension_names)
-    {
-        uAssertMsg_v(user_device_extension_names && *user_device_extension_names,
-                     "[ vulkan ] If the device extension quanitity is non zero, "
-                     "the names ptr must be non null\n");
-    }
-
-    u32 num_physical_devices = 0;
-    vkEnumeratePhysicalDevices(v_info->instance, &num_physical_devices, NULL);
-
-    uAssertMsg_v(num_physical_devices, "[ vulkan ] No physical devices found.\n");
-    if (!num_physical_devices)
-    {
-        return;
-    }
-
-    VkPhysicalDevice* physical_device_list =
-      ( VkPhysicalDevice* )calloc(num_physical_devices, sizeof(VkPhysicalDevice));
-    uAssertMsg_v(physical_device_list, "[ vulkan ] Unable to allocate physical device list.\n");
-
-    vkEnumeratePhysicalDevices(v_info->instance, &num_physical_devices, physical_device_list);
-    uVkVerbose("Found %d physical devices.\n", num_physical_devices);
-
-    VkPhysicalDevice candidate_device = NULL;
-    uSelectVulkanPhysicalDevice(( const VkPhysicalDevice** )&physical_device_list,
-                                &candidate_device,
-                                queue_info,
-                                num_physical_devices,
-                                user_device_extension_names,
-                                num_user_device_extension_names,
-                                return_surface_info);
-
-    if (!candidate_device)
-    {
-        uFatal("[ vulkan ] Unable to find suitable device.\n");
-    }
-
-    VkPhysicalDevice* non_const_physical_device = ( VkPhysicalDevice* )&(v_info->physical_device);
-    *non_const_physical_device                  = candidate_device;
-
-    if (physical_device_list)
-    {
-        free(physical_device_list);
-    }
-}
-
-#if __UE_debug__ == 1 || __UE_vkForceValidation__ == 1
-// Note: no function/argument decorations to conform w/ Vulkan spec.
-VKAPI_ATTR VkBool32 VKAPI_CALL
-uVkDebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT      message_severity_bits,
-                 VkDebugUtilsMessageTypeFlagsEXT             message_type_bits,
-                 const VkDebugUtilsMessengerCallbackDataEXT* callback_data,
-                 void*                                       user_data)
-{
-    VkBool32 should_abort_calling_process = VK_FALSE;
-    if (user_data)
-    {
-    } // Silence warnings
-
-    if (message_severity_bits >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT ||
-        message_type_bits >= VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT)
-    {
-        printf("[ vulkan validation begin ]\n%s\n[ vulkan validation end ]\n", callback_data->pMessage);
-        fflush(stdout);
-
-        should_abort_calling_process = VK_TRUE;
-    }
-
-    return should_abort_calling_process;
-}
-
-void
-uCreateVulkanDebugMessengerInfo(VkDebugUtilsMessengerCreateInfoEXT* const restrict debug_message_create_info)
-{
-    uAssertMsg_v(debug_message_create_info, "[ vulkan ] VkDebugUtilsMessengerCreateInfoEXT ptr must be non null.\n");
-
-    debug_message_create_info->messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
-                                                 VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-                                                 VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-
-    debug_message_create_info->messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
-                                             VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
-                                             VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-
-    debug_message_create_info->sType           = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-    debug_message_create_info->pfnUserCallback = uVkDebugCallback;
-    debug_message_create_info->pUserData       = NULL;
-}
-
-// [ cfarvin::TODO ] Remove params and use singletons
-void
-uCreateVulkanDebugMessenger(const uVulkanInfo* const restrict                  v_info,
-                            VkDebugUtilsMessengerCreateInfoEXT* const restrict debug_message_create_info,
-                            VkDebugUtilsMessengerEXT* const restrict           debug_messenger)
-{
-    uAssertMsg_v(v_info, "[ vulkan ] uVulkanInfo ptr must be non null.\n");
-    uAssertMsg_v(v_info->instance, "[ vulkan ] VkInstance ptr must be non zero.\n");
-    uAssertMsg_v(debug_message_create_info, "[ vulkan ] VkDebugUtilsMessengerCreateInfoEXT ptr must be non null.\n");
-
-    PFN_vkCreateDebugUtilsMessengerEXT vkCreateDebugUtilsMessengerEXT =
-      ( PFN_vkCreateDebugUtilsMessengerEXT )vkGetInstanceProcAddr(v_info->instance, "vkCreateDebugUtilsMessengerEXT");
-
-    uAssertMsg_v(vkCreateDebugUtilsMessengerEXT, "[ vulkan ] Failed to acquire pfn: vkCreateDebugUtilsMessengerEXT\n");
-
-    if (vkCreateDebugUtilsMessengerEXT)
-    {
-        uCreateVulkanDebugMessengerInfo(( VkDebugUtilsMessengerCreateInfoEXT* )debug_message_create_info);
-        VkResult success =
-          vkCreateDebugUtilsMessengerEXT(v_info->instance, debug_message_create_info, NULL, debug_messenger);
-
-        if (success != VK_SUCCESS)
-        {
-            uFatal("[ vulkan ] Failed to create debug messenger callback.\n");
-        }
-    }
-}
-#endif // __UE_debug__ == 1 || __UE_vkForceValidation__ == 1
-
-#if _WIN32
-// [ cfarvin::TODO ] Better than basic validation for game window param may be
-// needed.
-void
-uCreateWin32Surface(const uWin32Info* const restrict win32_info)
-{
-    uVulkanInfo*        v_info       = ( uVulkanInfo* )uGetVulkanInfo();
-    uVulkanSurfaceInfo* surface_info = ( uVulkanSurfaceInfo* )uGetVulkanSurfaceInfo();
-
-    uAssertMsg_v(v_info, "[ vulkan ] uVulkanInfo ptr must be non null.\n");
-    uAssertMsg_v(v_info->instance, "[ vulkan ] VkInstance must be non zero.\n");
-    uAssertMsg_v(surface_info, "[ vulkan ] uVulkanSurfaceInfo ptr must be non null");
-    uAssertMsg_v(!surface_info->surface, "[ vulkan ] uVulkanSurfaceInfo ptr must be null; will be overwritten.\n");
-    uAssertMsg_v(win32_info, "[ vulkan ] [ win32 ] uWin32Info ptr must be non null.\n");
-    uAssertMsg_v(win32_info->window, "[ vulkan ] [ win32 ] uWin32Info hwnd ptr member must be non null.\n");
-
-    VkWin32SurfaceCreateInfoKHR win32_surface_info = {};
-    win32_surface_info.sType                       = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-    win32_surface_info.hwnd                        = win32_info->window;
-    win32_surface_info.hinstance                   = GetModuleHandle(NULL);
-
-    VkResult win32_surface_result =
-      vkCreateWin32SurfaceKHR(v_info->instance, &win32_surface_info, NULL, ( VkSurfaceKHR* )&surface_info->surface);
-
-    if (win32_surface_result != VK_SUCCESS)
-    {
-        uFatal("[ vulkan ] Unable to create win32 surface.\n");
-    }
-}
-#endif // _WIN32
-
-void
-uQueryVulkanDeviceExtensions(const VkPhysicalDevice* const restrict physical_device,
-                             const char** const restrict            user_device_extension_names,
-                             const u16                              num_user_device_extension_names,
-                             u16* const restrict                    num_verified_extension_names)
-{
-    uAssertMsg_v(physical_device, "[ vulkan ] VkPhysicalDevice ptr must be non null.\n");
-    uAssertMsg_v(num_verified_extension_names, "[ vulkan ] Verified extension count ptr must be non null.\n");
-    if (num_user_device_extension_names)
-    {
-        uAssertMsg_v(user_device_extension_names && *user_device_extension_names,
-                     "[ vulkan ] If the device extension quanitity is non zero, "
-                     "the names ptr must be non null.\n");
-    }
-
-    if (!num_user_device_extension_names)
-    {
-        return;
-    }
-
-    // Query Extension Count
-    u32      num_available_device_extensions = 0;
-    VkResult success =
-      vkEnumerateDeviceExtensionProperties(*physical_device, NULL, &num_available_device_extensions, NULL);
-
-    if (success != VK_SUCCESS)
-    {
-        uFatal("[ vulkan ] Unable to enumerate extension properties.\n");
-    }
-
-    VkExtensionProperties* device_extension_properties =
-      ( VkExtensionProperties* )malloc(num_available_device_extensions * sizeof(VkExtensionProperties));
-
-    // Query Extension Names
-    success = vkEnumerateDeviceExtensionProperties(*physical_device,
-                                                   NULL,
-                                                   &num_available_device_extensions,
-                                                   device_extension_properties);
-
-    if (success != VK_SUCCESS)
-    {
-        uFatal("[ vulkan ] Unable to enumerate extension properties.\n");
-    }
-
-    // Verify user/device extensions match
-    *num_verified_extension_names = 0;
-    for (u32 device_extension_name_idx = 0; device_extension_name_idx < num_available_device_extensions;
-         device_extension_name_idx++)
-    {
-        for (u32 user_device_extension_name_idx = 0; user_device_extension_name_idx < num_user_device_extension_names;
-             user_device_extension_name_idx++)
-        {
-            if (strcmp((( const char* )(device_extension_properties[device_extension_name_idx]).extensionName),
-                       ( const char* )user_device_extension_names[user_device_extension_name_idx]) == 0)
-            {
-                (*num_verified_extension_names)++;
-            }
-        }
-    }
-
-    if (device_extension_properties)
-    {
-        free(device_extension_properties);
-    }
-}
-
-#if __UE_debug__ == 1 || __UE_vkForceValidation__ == 1
-void
-uQueryVulkanInstanceValidationLayers(char*** restrict                     instance_validation_layer_names,
-                                     VkLayerProperties** const restrict   instance_validation_layer_properties,
-                                     VkInstanceCreateInfo* const restrict instance_create_info,
-                                     const char** const restrict          user_instance_validation_layer_names,
-                                     const u32                            num_user_instance_validation_layer_names)
-{
-    uAssertMsg_v(instance_create_info, "[ vulkan ] VkInstanceCreateInfo ptr must be non null.\n");
-    uAssertMsg_v(!(*instance_validation_layer_names),
-                 "[ vulkan ] Layer names ptr must be null; will be overwritten.\n");
-    uAssertMsg_v(!(*instance_validation_layer_properties),
-                 "[ vulkan ] VkLayerProperties ptr must be null; will be overwritten.\n");
-    uAssertMsg_v(user_instance_validation_layer_names, "[ vulkan ] Validation layer names ptr must be non null.\n");
-    if (num_user_instance_validation_layer_names)
-    {
-        uAssertMsg_v(user_instance_validation_layer_names && *user_instance_validation_layer_names,
-                     "[ vulkan ] If the instance layer quanitity is non zero, the "
-                     "names ptr must be non null.\n");
-    }
-
-    if (!num_user_instance_validation_layer_names)
-    {
-        return;
-    }
-
-    // Query Layer Count
-    VkResult success              = VK_SUCCESS;
-    u32      num_available_layers = 0;
-    success                       = vkEnumerateInstanceLayerProperties(&num_available_layers, NULL);
-
-    if (success != VK_SUCCESS)
-    {
-        uFatal("[ vulkan ] Unable to enumerate layers.\n");
-    }
-
-    uAssertMsg_v((num_available_layers >= num_user_instance_validation_layer_names),
-                 "[ vulkan ] Number of requested validation layers [ %d ] exceeds total "
-                 "avaialbe count [ %d ].\n",
-                 num_user_instance_validation_layer_names,
-                 num_available_layers);
-
-    *instance_validation_layer_properties =
-      ( VkLayerProperties* )malloc(num_available_layers * sizeof(VkLayerProperties));
-
-    // Query Layer Names
-    success = vkEnumerateInstanceLayerProperties(&num_available_layers, *instance_validation_layer_properties);
-    if (success != VK_SUCCESS)
-    {
-        uFatal("[ vulkan ] Unable to enumerate layers.\n");
-    }
-
-    // Set Layer Names
-    uVkVerbose("Searching for validation layers...\n");
-    u32 num_added_layers             = 0;
-    *instance_validation_layer_names = ( char** )malloc(num_available_layers * sizeof(s8**));
-    for (u32 available_layer_idx = 0; available_layer_idx < num_available_layers; available_layer_idx++)
-    {
-        for (u32 user_layer_idx = 0; user_layer_idx < num_user_instance_validation_layer_names; user_layer_idx++)
-        {
-            uVkVerbose("\tLayer found: %s\n", (*instance_validation_layer_properties)[available_layer_idx].layerName);
-            if (strcmp(( const char* )user_instance_validation_layer_names[user_layer_idx],
-                       ( const char* )(*instance_validation_layer_properties)[available_layer_idx].layerName) == 0)
-            {
-                (*instance_validation_layer_names)[num_added_layers] =
-                  ( char* )(*instance_validation_layer_properties)[available_layer_idx].layerName;
-                num_added_layers++;
-            }
-        }
-    }
-
-    if (num_added_layers != num_user_instance_validation_layer_names)
-    {
-        uFatal("[ vulkan ] Unable to load all requested layers.\n");
-    }
-
-    instance_create_info->enabledLayerCount   = num_added_layers;
-    instance_create_info->ppEnabledLayerNames = ( const char** )*instance_validation_layer_names;
-}
-#endif // __UE_debug__ == 1 || __UE_vkForceValidation__ == 1
-
-void
-uQueryVulkanInstanceExtensions(const char*** restrict                 instance_extension_names,
-                               VkExtensionProperties** const restrict instance_extension_properties,
-                               VkInstanceCreateInfo* const restrict   instance_create_info,
-                               const char** const restrict            user_instance_extension_names,
-                               const u16                              num_user_instance_extension_names)
-{
-    uAssertMsg_v(instance_create_info, "[ vulkan ] VkInstanceCreateInfo ptr must be non null.\n");
-    uAssertMsg_v(!(*instance_extension_names), "[ vulkan ] Extension names ptr must be null; will be overwritten.\n");
-    uAssertMsg_v(!(*instance_extension_properties),
-                 "[ vulkan ] VkExtensionProperties ptr must be null; will be "
-                 "overwritten.\n");
-    if (num_user_instance_extension_names)
-    {
-        uAssertMsg_v(user_instance_extension_names && *user_instance_extension_names,
-                     "[ vulkan ] If the instance extension quanitity is non zero, "
-                     "the names ptr must be non null\n");
-    }
-
-    if (!user_instance_extension_names)
-    {
-        return;
-    }
-
-    // Query Extension Count
-    VkResult success = VK_SUCCESS;
-    success          = vkEnumerateInstanceExtensionProperties(NULL, &instance_create_info->enabledExtensionCount, NULL);
-
-    if (success != VK_SUCCESS)
-    {
-        uFatal("[ vulkan ] Unable to enumerate layer properties.\n");
-    }
-
-    *instance_extension_properties =
-      ( VkExtensionProperties* )malloc(instance_create_info->enabledExtensionCount * sizeof(VkExtensionProperties));
-
-    // Query Extension Names
-    success = vkEnumerateInstanceExtensionProperties(NULL,
-                                                     &instance_create_info->enabledExtensionCount,
-                                                     *instance_extension_properties);
-
-    if (success != VK_SUCCESS)
-    {
-        uFatal("[ vulkan ] Unable to enumerate layer properties.\n");
-    }
-
-    // Set Extension Names
-    uVkVerbose("Searching for extensions...\n");
-    u32 num_added_extensions  = 0;
-    *instance_extension_names = ( const char** )malloc(instance_create_info->enabledExtensionCount * sizeof(s8**));
-    for (u32 ext_idx = 0; ext_idx < instance_create_info->enabledExtensionCount; ext_idx++)
-    {
-        uVkVerbose("\tExtension found: %s\n", (*instance_extension_properties)[ext_idx].extensionName);
-        for (u32 user_ext_idx = 0; user_ext_idx < num_user_instance_extension_names; user_ext_idx++)
-        {
-            if (strcmp(( const char* )user_instance_extension_names[user_ext_idx],
-                       ( const char* )(*instance_extension_properties)[ext_idx].extensionName) == 0)
-            {
-                (*instance_extension_names)[num_added_extensions] =
-                  ( const char* )(*instance_extension_properties)[ext_idx].extensionName;
-                num_added_extensions++;
-            }
-        }
-    }
-
-    if (num_added_extensions != num_user_instance_extension_names)
-    {
-        uFatal("[ vulkan ] Unable to load all requested extensions.\n");
-    }
-
-    instance_create_info->enabledExtensionCount   = num_added_extensions;
-    instance_create_info->ppEnabledExtensionNames = ( const char** )*instance_extension_names;
-}
-
-void
-uCreateVulkanInstance(const uVulkanInfo* const restrict       v_info,
-                      const VkApplicationInfo* const restrict application_info,
-#if __UE_debug__ == 1 || __UE_vkForceValidation__ == 1
-                      const char** const restrict user_instance_validation_layer_names,
-                      const u16                   num_user_instance_validation_layer_names,
-#endif //__UE_debug__ == 1 || __UE_vkForceValidation__ == 1
-                      const char** const restrict user_instance_extension_names,
-                      const u16                   num_user_instance_extension_names)
-
-{
-    uAssertMsg_v(v_info, "[ vulkan ] uVulkanInfo ptr must be non null.\n");
-    uAssertMsg_v(application_info, "[ vulkan ] VkApplicationInfo ptr must be non null.\n");
-#if __UE_debug__ == 1 || __UE_vkForceValidation__ == 1
-    if (num_user_instance_validation_layer_names)
-    {
-        uAssertMsg_v(user_instance_validation_layer_names && *user_instance_validation_layer_names,
-                     "[ vulkan ] If the instance layer quanitity is non zero, the "
-                     "names ptr must be non null.\n");
-    }
-#endif // __UE_debug__ == 1 || __UE_vkForceValidation__ == 1
-    if (num_user_instance_extension_names)
-    {
-        uAssertMsg_v(user_instance_extension_names && *user_instance_extension_names,
-                     "[ vulkan ] If the instance extension quanitity is non zero, "
-                     "the names ptr must be non null.\n");
-    }
-
-    VkExtensionProperties* instance_extension_properties        = NULL;
-    VkLayerProperties*     instance_validation_layer_properties = NULL;
-    char**                 instance_extension_names             = NULL;
-    char**                 instance_validation_layer_names      = NULL;
-
-#if __UE_debug__ == 1 || __UE_vkForceValidation__ == 1
-    uCreateVulkanDebugMessengerInfo(&vulkan_setup_debug_messenger_info);
-#endif // __UE_debug__ == 1 || __UE_vkForceValidation__ == 1
-
-    VkResult             success              = VK_SUCCESS;
-    VkInstanceCreateInfo instance_create_info = {};
-
-    // Query extensions; store in VkInstanceCreateInfo
-    uQueryVulkanInstanceExtensions(( const char*** )&instance_extension_names,
-                                   &instance_extension_properties,
-                                   &instance_create_info,
-                                   user_instance_extension_names,
-                                   num_user_instance_extension_names);
-
-#if __UE_debug__ == 1 || __UE_vkForceValidation__ == 1
-    // Query layers; store in VkInstanceCreateInfo
-    uQueryVulkanInstanceValidationLayers(&instance_validation_layer_names,
-                                         &instance_validation_layer_properties,
-                                         &instance_create_info,
-                                         user_instance_validation_layer_names,
-                                         num_user_instance_validation_layer_names);
-#endif // __UE_debug__ == 1 || __UE_vkForceValidation__ == 1
-
-    instance_create_info.sType            = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-    instance_create_info.pApplicationInfo = application_info;
-#if __UE_debug__ == 1 || __UE_vkForceValidation__ == 1
-    instance_create_info.pNext = &vulkan_setup_debug_messenger_info;
-#endif // __UE_debug__ == 1 || __UE_vkForceValidation__ == 1
-    success = vkCreateInstance(&instance_create_info, NULL, ( VkInstance* )&v_info->instance);
-
-    if (success != VK_SUCCESS)
-    {
-        uFatal("[ vulkan ] Unable to create vulkan instance.\n");
-    }
-
-#if __UE_debug__ == 1 || __UE_vkForceValidation__ == 1
-    uCreateVulkanDebugMessenger(v_info,
-                                ( VkDebugUtilsMessengerCreateInfoEXT* )&vulkan_main_debug_messenger_info,
-                                ( VkDebugUtilsMessengerEXT* )&vulkan_main_debug_messenger);
-#endif // __UE_debug__ == 1 || __UE_vkForceValidation__ == 1
-
-    if (instance_extension_names)
-    {
-        free(instance_extension_names);
-    }
-
-    if (instance_validation_layer_names)
-    {
-        free(instance_validation_layer_names);
-    }
-
-    if (instance_extension_properties)
-    {
-        free(instance_extension_properties);
-    }
-
-    if (instance_validation_layer_properties)
-    {
-        free(instance_validation_layer_properties);
-    }
-}
-
-void
-uCreateVulkanApplicationInfo(const char* const restrict        application_name,
-                             VkApplicationInfo* const restrict application_info)
-{
-    uAssertMsg_v(application_name, "[ vulkan ] Application names ptr must be non null.\n");
-    uAssertMsg_v(application_info, "[ vulkan ] Application info ptr must be non null.\n");
-
-    application_info->sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-    application_info->pApplicationName   = ( const char* )application_name;
-    application_info->applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-    application_info->pEngineName        = ( const char* )uGetEngineName();
-    application_info->apiVersion         = VK_API_VERSION_1_0;
-}
-
-void
-uInitializeVulkan(const char* const restrict application_name,
-                  void* const restrict       os_info,
-#if __UE_debug__ == 1 || __UE_vkForceValidation__ == 1
-                  const char** const restrict user_instance_validation_layer_names,
-                  const u8                    num_user_instance_validation_layer_names,
-#endif // __UE_debug__ == 1 || __UE_vkForceValidation__ == 1
+uvkCreateInstance(const char* const restrict  application_name,
+                  const char** const restrict user_validation_layer_names,
+                  const size_t                user_validation_layer_name_count,
                   const char** const restrict user_instance_extension_names,
-                  const u8                    num_user_instance_extension_names,
-                  const char** const restrict user_device_extension_names,
-                  const u8                    num_user_device_extension_names)
-{
-#if __UE_debug__ == 1 || __UE_vkForceValidation__ == 1
-    if (num_user_instance_validation_layer_names)
-    {
-        uAssertMsg_v(user_instance_validation_layer_names && *user_instance_validation_layer_names,
-                     "[ vulkan ] If the instance layer quanitity is non zero, the "
-                     "names ptr must be non null.\n");
-    }
-#endif // __UE_debug__ == 1 || __UE_vkForceValidation__ == 1
-    if (num_user_instance_extension_names)
-    {
-        uAssertMsg_v(user_instance_extension_names && *user_instance_extension_names,
-                     "[ vulkan ] If the instance extension quanitity is non zero, "
-                     "the names ptr must be non null.\n");
-    }
-    if (num_user_device_extension_names)
-    {
-        uAssertMsg_v(user_device_extension_names && *user_device_extension_names,
-                     "[ vulkan ] If the device extension quanitity is non zero, "
-                     "the names ptr must be non null.\n");
-    }
+                  const size_t                user_instance_extension_name_count,
+                  VkInstance*                 return_instance);
 
-    VkApplicationInfo   application_info = {};
-    uVulkanInfo*        v_info           = ( uVulkanInfo* )uGetVulkanInfo();
-    uVulkanQueueInfo*   queue_info       = ( uVulkanQueueInfo* )uGetVulkanQueueInfo();
-    uVulkanSurfaceInfo* surface_info     = ( uVulkanSurfaceInfo* )uGetVulkanSurfaceInfo();
-
-    uAssertMsg_v(v_info, "[ vulkan ] uVulkanInfo ptr must be non null.\n");
-    uAssertMsg_v(queue_info, "[ vulkan ] uVulkanQueueInfo ptr must be non null.\n");
-    uAssertMsg_v(surface_info, "[ vulkan ] uVulkanSurfaceInfo ptr must be non null.\n");
-
-#if __UE_debug__ == 1 || __UE_vkForceValidation__ == 1
-    printf("[ vulkan ] Validation layers: ON.\n");
-#endif // __UE_debug__ == 1 || __UE_vkForceValidation__ == 1
-
-    uCreateVulkanApplicationInfo(application_name, &application_info);
-    uCreateVulkanInstance(v_info,
-                          &application_info,
-#if __UE_debug__ == 1 || __UE_vkForceValidation__ == 1
-                          user_instance_validation_layer_names,
-                          num_user_instance_validation_layer_names,
-#endif // __UE_debug__ == 1 || __UE_vkForceValidation__ == 1
-                          user_instance_extension_names,
-                          num_user_instance_extension_names);
-
-#if _WIN32
-    uCreateWin32Surface(( const uWin32Info* const )os_info);
-#else
-    // [ cfarvin::TODO ] Implement linux surface cration
-    uFatal("Linux surface creation not implemented.");
-#endif // _WIN32
-
-    // queue_info built
-    // surface_info_built
-    uCreateVulkanPhysicalDevice(v_info,
-                                queue_info,
-                                user_device_extension_names,
-                                num_user_device_extension_names,
-                                surface_info);
-
-    uCreateVulkanLogicalDevice(v_info,
-                               queue_info,
-#if __UE_debug__ == 1 || __UE_vkForceValidation__ == 1
-                               user_instance_validation_layer_names,
-                               num_user_instance_validation_layer_names,
-#endif // __UE_debug__ == 1 || __UE_vkForceValidation__ == 1
-                               user_device_extension_names,
-                               num_user_device_extension_names);
-}
-
+/*
+ * @brief Destroy a VkInstance.
+ *
+ * @param[in] instance A valid VkInstance.
+ */
 void
-uDestroyVulkan()
-{
-    uVulkanInfo* v_info = ( uVulkanInfo* )uGetVulkanInfo();
-    uAssertMsg_v(v_info, "[ vulkan ] uVulkanInfo ptr must be non null.\n");
+uvkDestroyInstance(VkInstance instance);
 
-    // Wait for device to be idle
-    if (v_info->logical_device)
-    {
-        vkDeviceWaitIdle(v_info->logical_device);
-    }
+/*
+ * @brief Queries the current Vulkan context for the provided extension names.
+ *
+ * When querying for device extensions only, pass NULL for all instance extension parameters.
+ * When querying for instance extensions only, pass NULL for the first three parameters.
+ *
+ * @param[in] physical_device The physical device associated with the application.
+ *            Can be NULL when querying for instance extensions only.
+ * @param[in] user_device_extension_names A pointer to an array of instanceextension names to query
+ *            for. Can be NULL when queyring for instance extensions only.
+ * @param[in] user_device_extension_count The number of elements in the device extension name
+ *                array.
+ * @param[in] user_instance_extension_names A pointer to an array of instance extensions to query
+ *            for. Can be NULL if querying for device extensions only.
+ * @param[in] user_instance_extension_count The number of elements in the instance extension
+ *                name array.
+ * @param[out] matched_extension_count The number of extensions from the user extension array that
+ *             matched available extensions.
+ *
+ * @return True on success, false otherwise.
+ */
+bool
+uvkQueryExtensions(const VkPhysicalDevice      physical_device,
+                   const char** const restrict user_device_extension_names,
+                   size_t                      user_device_extension_count,
+                   const char** const restrict user_instance_extension_names,
+                   size_t                      user_instance_extension_count,
+                   size_t* const restrict      matched_extension_count);
 
-    uDestroyVulkanImageGroup();
-    uDestroyVulkanSurfaceInfo();
-    uDestroyVulkanCommandInfo();
-    uDestroyVulkanQueueInfo();
-    uDestroyVulkanRenderInfo();
-    uDestroyVulkanInfo();
-}
+/*
+ * @brief Queries the current Vulkan context for the provided layer names.
+ *
+ * Note: The layer count parameter initially indicates the length of the layer name array parameter.
+ * However, it will be _overwritten_ on return to indicate the number of matches between available
+ * layers and user requested layers. Callers should store the original value and compare post-return.
+ * Callers should first see the uvkCreateDevices and uvkCreateIstance functions, which incorporate this
+ * functionality.
+ *
+ * @param[in] user_layer_names A pointer to an array of layer names to user would like to enable.
+ * @param[in,out] user_layer_count A pointer to the length of the name array parameter. On return,
+ *                the number of available layers requested will be stored at this address.
+ */
+bool
+uvkQueryLayers(const char** const restrict user_layer_names, size_t* const user_layer_count);
+
+/*
+ * @brief The default debug messenger callback. See Vulkan documentation for parmeter details.
+ */
+VKAPI_ATTR VkBool32 VKAPI_CALL
+uvkDebugMessenger(VkDebugUtilsMessageSeverityFlagBitsEXT      message_severity_bits,
+                  VkDebugUtilsMessageTypeFlagsEXT             message_type_bits,
+                  const VkDebugUtilsMessengerCallbackDataEXT* callback_data,
+                  void*                                       user_data);
+
+/*
+ * @brief Create a debug callback messenger. Callers should first see the uvkCreateDevices function,
+ *        which incorporates this functionality.
+ *
+ * @param[in] instance A valid VkInstance.
+ * @param[in] debug_messenger_ci If non NULL, will be used to create the debug messenger. Otherwise
+ *                               the default values will be used.
+ * @param[out] return_debug_messenger The debug messenger to be created by this function.
+ *
+ * @return True on success, false otherwise.
+ */
+bool
+uvkCreateDebugMessenger(const VkInstance                         instance,
+                        const VkDebugUtilsMessengerCreateInfoEXT debug_messenger_ci,
+                        VkDebugUtilsMessengerEXT* const restrict return_debug_messenger);
+
+/*
+ * @brief Destroys a VkDebugUtilsMessengerEXT.
+ *
+ * @param[in] instance A valid VkInstance.
+ * @param[in] debug_messenger A valid VkDebugUtilsMessengerEXT to destroy.
+ *
+ * @return True on success, false otherwise.
+ */
+bool
+uvkDestroyDebugMessenger(const VkInstance instance, VkDebugUtilsMessengerEXT debug_messenger);
+
+/*
+ * @brief Creates a logical and physical device, along with the objects that must be compatible
+ *        with logical and physical devices. Callers should first see the uvkCreateInstance function,
+ *        which incorporates this functionality.
+ *
+ * @param[in] instance A valid VkInstance.
+ * @param[in] surface A valid VkSurfaceKHR.
+ * @param[in] user_validation_layer_names A pointer to an array of validation layer names to enable.
+ * @param[in] user_validation_layer_name_count The number of elements in the validation layer name array.
+ * @param[in] user_instance_extension_names A pointer to an array of instance extension names to enable.
+ * @param[in] user_instance_extension_name_count The number of elements in the instance extension name array.
+ * @param[in] user_device_extension_names A pointer to an array of device extension names to enable.
+ * @param[in] user_device_extension_name_count The number of elements in the device extension name array.
+ * @param[out] return_surface_capabilities The VkSurfaceCapabilitiesKHR structure created by this function.
+ * @param[out] return_surface_format The VkSurfaceFormatKHR structure created by this function.
+ * @param[out] return_present_mode The VkPresentModeKHR structure created by this function.
+ * @param[out] return_active_queues The VkActiveQueues structure created by this function.
+ * @param[out] return_logical_device The VkDevice created by this function.
+ * @param[out] return_physical_device The VkPhysicalDevice created by this function.
+ *
+ * @return True on success, false otherwise.
+ */
+bool
+uvkCreateDevices(const VkInstance                         instance,
+                 const VkSurfaceKHR                       surface,
+                 const char** const restrict              user_validation_layer_names,
+                 const size_t                             user_validation_layer_name_count,
+                 const char** const restrict              user_instance_extension_names,
+                 const size_t                             user_instance_extension_name_count,
+                 const char** const restrict              user_device_extension_names,
+                 const size_t                             user_device_extension_name_count,
+                 VkSurfaceCapabilitiesKHR* const restrict return_surface_capabilities,
+                 VkSurfaceFormatKHR* const restrict       return_surface_format,
+                 VkPresentModeKHR* const restrict         return_present_mode,
+                 uvkActiveQueues* const restrict          return_active_queues,
+                 VkDevice* const restrict                 return_logical_device,
+                 VkPhysicalDevice* const restrict         return_physical_device);
+
+/*
+ * @brief Destroys a VkDevice and all objects which rely on it.
+ *
+ * @param[in] instance A valid VkInstance.
+ * @param[in] surface A valid VkSurfaceKHR.
+ * @param[in] debug_messenger If not NULL, a valid VkDebugUtilsMessengerEXT.
+ * @param[in] shader_modules An array of valid VkShaderModule.
+ * @param[in] shader_module_count The number of elements in the VkShaderModule array.
+ * @param[in] images A pointer to an array of valid VkImage(s).
+ * @param[in] image_views A pointer to an array of valid VkImageView(s).
+ * @param[in] image_count The number of elements in the VkImageView array.
+ * @param[in] render_pass A valid VkRenderPass.
+ * @param[in] swapchain A valid VkSwapchainKHR.
+ * @param[in] logical_device A valid VkDevice.
+ */
+void
+uvkDestroyDevices(VkInstance                instance,
+                  VkSurfaceKHR              surface,
+                  VkDebugUtilsMessengerEXT* debug_messenger,
+                  VkShaderModule*           shader_modules,
+                  u32                       shader_module_count,
+                  VkImage**                 images,
+                  VkImageView**             image_views,
+                  u32                       image_count,
+                  VkSwapchainKHR            swapchain,
+                  VkRenderPass              render_pass,
+                  VkDevice                  logical_device);
+
+/*
+ * @brief Creates a physical device, and the structures that must be compatible with it. Callers
+ *        should first see the uvkCreateDevices function, which incorporates this functionality.
+ *
+ * @param[in] instance A valid VkInstance.
+ * @param[in] surface A valid VkSurfaceKHR.
+ * @param[in] user_device_extension_names A pointer to an array of device extension names to enable.
+ * @param[in] user_device_extension_name_count The number of elements in the device extension name array.
+ * @param[out] return_surface_capabilities The VkSurfaceCapabilitiesKHR structure created by this function.
+ * @param[out] return_surface_format The VkSurfaceFormatKHR structure created by this function.
+ * @param[out] return_present_mode The VkPresentModeKHR structure created by this function.
+ * @param[out] return_physical_device The VkPhysicalDevice created by this function.
+ *
+ * @return True on success, false otherwise.
+ */
+bool
+uvkCreatePhysicalDevice(const VkInstance                instance,
+                        const VkSurfaceKHR              surface,
+                        const char** const restrict     user_device_extension_names,
+                        const u16                       user_device_extension_count,
+                        VkSurfaceCapabilitiesKHR* const return_surface_capabilities,
+                        VkSurfaceFormatKHR* const       return_surface_format,
+                        VkPresentModeKHR* const         return_present_mode,
+                        VkPhysicalDevice* const         return_physical_device);
+
+/*
+ * @brief Obtain all the physical devices on this system. Callers should first see the uvkCreateDevices
+ *        function, which incorporates this functionality.
+ *
+ * @param[in] instance A valid VkInstance.
+ * @param[out] An array of physical devices.
+ * @param[out] The number of elements in the physical devices array.
+ *
+ * @return True on succes, false otherwise.
+ */
+bool
+uvkGetAllPhysicalDevices(VkInstance                        instance,
+                         VkPhysicalDevice** const restrict return_physical_devices,
+                         u32* const restrict               return_physical_device_count);
+
+/*
+ * @brief Obtains the graphics and present queue index for the given surface and physical device.
+ *        Callers should first see the uvkCreateDevices function, which incorporates this functionality.
+ *
+ * @param[in] pysical_device A valid VkPhysicalDevice.
+ * @param[in] surface A valid VkSurfaceKHR.
+ * @param[out] return_graphics_queue_family_index On successful return, the index of the graphics queue.
+ * @param[out] return_present_queue_family_index On successful return, the index of the present queue.
+ *
+ * @return True on succes, false otherwise..
+ */
+bool
+uvkGetQueueFamilyIndices(const VkPhysicalDevice physical_device,
+                         const VkSurfaceKHR     surface,
+                         u32* const restrict    return_graphics_queue_family_index,
+                         u32* const restrict    return_present_queue_family_index);
+
+/*
+ * @brief Obtain all queue family properties for the given physical device. Callers should first see
+ *        the uvkGetQueueIndices function, which incoporates this functionality.
+ *
+ * @param[in] physical_device A valid VkPhysicalDevice.
+ * @param[out] return_queue_family_props An array of VkQueueFamilyProperties to populate.
+ * @param[out] return_queue_family_porp_count The number of elements returned in the queue family
+ *             properties array.
+ *
+ * @return True on success, false otherwise.
+ */
+bool
+uvkGetQueueFamilyProperties(const VkPhysicalDevice                   physical_device,
+                            VkQueueFamilyProperties** const restrict return_queue_family_props,
+                            u32* const return_queue_family_prop_count);
+
+/*
+ * @brief Counts the number of unique queue family indicies.
+ *
+ * @param[in] graphics_queue_family_index The index of the graphics queue family.
+ * @param[in] present_queue_family_index The index of the present queue family.
+ * @param[out] return_unique_queue_family_count The number of uniqueue queue family indices from all
+ *             input parameters.
+ */
+void
+uvkCountUniqueQueueFamilies(const u32     graphics_queue_family_index,
+                            const u32     present_queue_family_index,
+                            u32* restrict return_unique_queue_family_count);
+
+/*
+ * @brief Creates VkDeviceQueueCreateInfo(s). This function allccates memeory not freed in this scope.
+ *        Callers should first see the uvkCreateDevices function, which incorporates this functionality.
+ *
+ * @param[in] graphics_queue_family_index The index of the graphics queue family.
+ * @param[in] present_queue_family_index The index of the present queue family.
+ * @param[in] device_queue_ci A VkDeviceQueueCreateInfo to use as a template.
+ * @param[out] return_device_queue_cis A pointer to an array of VkDeviceQueueCreateInfo(s) to be created.
+ * @param[out] return_uniqueue_queue_count A pointer to store the quantity of unique queues discovered.
+ *
+ * @return True on success, false otherise.
+ */
+bool
+uvkGetDeviceQueueCreateInfos(const u32                                graphics_queue_family_index,
+                             const u32                                present_queue_family_index,
+                             const VkDeviceQueueCreateInfo            device_queue_ci,
+                             VkDeviceQueueCreateInfo** const restrict return_device_queue_cis,
+                             u32* const restrict                      return_unique_queue_count);
+
+/*
+ * @brief Obtain the surface capabilities for a given VkSurfaceKHR. Callers should first see the
+ *        uvkCreateDevices function, which incorporates this functionality.
+ *
+ * @param[in] physical_device A valid VkPhysicalDevice.
+ * @param[in] surface A valid VkSurfaceKHR.
+ * @param[out] return_surface_capabilities The surface capabilities pertaining to the VkSurfaceKHR parameter.
+ *
+ * @return True on success, false otherwise.
+ */
+bool
+uvkGetSurfaceCapabilities(const VkPhysicalDevice                   physical_device,
+                          const VkSurfaceKHR                       surface,
+                          VkSurfaceCapabilitiesKHR* const restrict return_surface_capabilities);
+
+/*
+ * @brief Obtain all supported surface formats for a given VkSurfaceKHR. Callers should first see the
+ *        uvkCreateDevices function, which incorporates this functionality.
+ *
+ * @param[in] physical_device A valid VkPhysicalDevice.
+ * @param[in] surface A valid VkSurfaceKHR.
+ * @param[out] return_surface_formats An array of the supported surface formats for the surface parameter.
+ * @param[out] return_surface_format_count The number of elements in the surface format array.
+ *
+ * @return True on success, false otherwise.
+ */
+bool
+uvkGetSurfaceFormats(const VkPhysicalDevice              physical_device,
+                     const VkSurfaceKHR                  surface,
+                     VkSurfaceFormatKHR** const restrict return_surface_formats,
+                     u32* const restrict                 return_surface_format_count);
+
+/*
+ * @brief Obtain all supported present modes for a given VkSurfaceKHR. Callers should first see the
+ *        uvkCreateDevices function, which incorporates this functionality. Does not log error
+ *        messages as it is typically called within a verification loop where invalid options are
+ *        expected on some loop iterations. Callers should first see the uvkCreateDevices function,
+ *        which incorporates this functionality.
+ *
+ * @param[in] physical_device A valid VkPhysicalDevice.
+ * @param[in] surface A valid VkSurface.
+ * @param[out] return_present_modes An array of prsent modes for the given VkSurfaceKHR.
+ * @param[out] return_present_mode_count The number of elements in the present mode array.
+ *
+ * @return True on success, false otherwise.
+ */
+bool
+uvkGetPresentModes(const VkPhysicalDevice            physical_device,
+                   const VkSurfaceKHR                surface,
+                   VkPresentModeKHR** const restrict return_present_modes,
+                   u32* const restrict               return_present_mode_count);
+
+/*
+ * @brief Selects a surface format based on the preferred VkFormat and VkColorSpaceKHR paramters,
+ *        if possible. Callers should first see the uvkCreateDevices function, which incorporates
+ *        this functionality.
+ *
+ * @param[in] surface_formats An array of all surface formats to be considered.
+ * @param[in] surface_format_count The number of elements in the surface format array.
+ * @param[in] desired_format The preferred VkFormat.
+ * @param[in] desired_color_sapce The preferred VkColorSpaceKHR.
+ * @param[out] return_surface_format The index in the surface format array that meets the prameter
+ *             requirements, if any.
+ *
+ * @return True on success, false otherwise.
+ */
+bool
+uvkSelectSurfaceFormat(const VkSurfaceFormatKHR* const restrict surface_formats,
+                       const u32                                surface_format_count,
+                       const VkFormat                           desired_format,
+                       const VkColorSpaceKHR                    desired_color_space,
+                       u32* const restrict                      return_surface_format_index);
+
+/*
+ * @brief Selects a present mode based based on the preffered present mode, if possible. Callers
+ *        should first see the uvkCreateDevices function, which incorporates this functionality.
+ *
+ * @param[in] present_modes An array of present modes to consider.
+ * @param[in] present_mode_count The number of elements in the present mode array.
+ * @param[in] desired_present_mode The preferred present mode.
+ * @param[out] return_present_mode_index The index in the present mode array that conforms to the
+ *             preferred parameters, if possible.
+ *
+ * @return True on success, false otherwise.
+ */
+bool
+uvkSelectPresentMode(const VkPresentModeKHR* const restrict present_modes,
+                     const u32                              present_mode_count,
+                     VkPresentModeKHR                       desired_present_mode,
+                     u32* const restrict                    return_present_mode_index);
+
+/*
+ * @brief Creates a logical device based on the logical_device_ci_template parameter. The extension
+ *        and layer names and counts for the VkDeviceCreateInfo will be handled by this function based
+ *        on other parameters. This function also returns a uvkActiveQueues structure for the created
+ *        logical device. Callers should first see the uvkCreateDevices function, which incorporates
+ *        this functionality.
+ *
+ * @param[in] physical_device A valid VkPhysicalDevice.
+ * @param[in] surface A valid VkSrufaceKHR.
+ * @param[in] user_validation_layer_names A pointer to an array of validation layer names.
+ * @param[in] user_validation_layer_name_count The number of elements in the layer names parameter.
+ * @param[in] user_device_extension_names A pointer to an array of device extensions to enable.
+ * @param[in] user_device_extension_name_count The number of elements in the device extension names
+ *            parameter.
+ * @param[out] return_logical_device A pointer to the logical device that will be created.
+ * @param[out] return_active_queues The active present and graphcis queues associated with this
+ *             logical device.
+ *
+ * @return True on success, false otherwise.
+ */
+bool
+uvkCreateLogicalDevice(const VkPhysicalDevice          physical_device,
+                       const VkSurfaceKHR              surface,
+                       const char** const restrict     user_validation_layer_names,
+                       const size_t                    user_validation_layer_name_count,
+                       const char** const restrict     user_device_extension_names,
+                       const size_t                    user_device_extension_name_count,
+                       VkDevice*                       return_logical_device,
+                       uvkActiveQueues* const restrict return_active_queues);
+
+/*
+ * @brief Destroys a valid VkDevice.
+ *
+ * @param[in] logical_device A valid VkDevice.
+ */
+void
+uvkDestroyLogicalDevice(VkDevice logical_device);
+
+/*
+ * @brief Validates that the requested layers are available on the system. Callers should first see the
+ *        uvkCreateDevices function, which incorporates this functionality.
+ *
+ * @param[in] user_layers A pointer to an array of layer names.
+ * @param[in] user_layer_count The number of elements in the user layer name parameter.
+ * @param[in] layer_properties An array of VkLayerProperties obtained.
+ * @param[in] layer_property_count The number of elements in the layer properties parameter.
+ *
+ * @return The number of layers from the user layer array that are also available in the
+ *         VkLayerProperties array.
+ */
+size_t
+uvkValidateUserLayers(const char** const restrict             user_layers,
+                      const size_t                            user_layer_count,
+                      const VkLayerProperties* const restrict layer_properties,
+                      const size_t                            layer_property_count);
+
+/*
+ * @brief Validates that the requested extensions are available on the system. Callers should first
+ *        look at the uvkQueryExtensions function, which incorporates this functionality.
+ *
+ * @param[in] user_extensions An array of extension names.
+ * @param[in] user_extension_count The number of elements in the extension name array.
+ * @param[in] extension_properties An array of VkExtensionProperties.
+ * @param[in] extension_properties_count The number of elements in the extension properties array.
+ *
+ * @return The number of extensions from the user extension array that are also available in the
+ *         VkExtensionProperties array.
+ */
+size_t
+uvkValidateUserExtensions(const char** const restrict                 user_extensions,
+                          const size_t                                user_extension_count,
+                          const VkExtensionProperties* const restrict extension_properties,
+                          const size_t                                extension_property_count);
+
+/*
+ * @brief Obtain all available VkLayerProperties available on this system. Callers should first look
+ *        at the uVkQueryLayers function, which incorporates this functionality.
+ *
+ * @param[out] return_layer_properties A pointer to an array of VkLayerProperties to be populated.
+ * @param[out] return_layer_count The number of elements in the returned layer property array.
+ */
+bool
+uvkGetInstanceLayers(VkLayerProperties** const restrict return_layer_properties,
+                     u32* const                         return_layer_count);
+
+/*
+ * @brief Obtain all available VkExtensionProperties for VkInstance(s) available on this system.
+ *        Callers should first look at the uvkQueryExtensions function, which incorporates
+ *        this functionality.
+ *
+ * @param[out] return_extension_properties A pointer to an array of VkExtensionProperties for
+ *             VkInstance(s) to be populated.
+ * @param[out] return_extension_count The number of elements in the returned extension property
+ *             array.
+ */
+bool
+uvkGetInstanceExtensions(VkExtensionProperties** const restrict return_extension_properties,
+                         u32* const                             return_extension_count);
+
+/*
+ * @brief Obtain all available VkExtensionProperties for VkDevice(s) available on this system.
+ *        Callers should first look at the uvkQueryExtensions function, which incorporates
+ *        this functionality.
+ *
+ * @param[in] physical_device A valid VkPhysicalDevice.
+ * @param[out] return_extension_properties A pointer to an array of VkExtensionProperties for
+ *             VkDevice(s) to be populated.
+ * @param[out] return_extension_count The number of elements in the returned extension property
+ *             array.
+ */
+bool
+uvkGetDeviceExtensions(const VkPhysicalDevice                 physical_device,
+                       VkExtensionProperties** const restrict return_extension_properties,
+                       u32* const                             return_extension_count);
+
+/*
+ * @brief Obtains the surface extent for a given VkSurfaceCapabilitiesKHR and game window. Callers
+ *        should first see the uvkCreateDevices function, which incorporates this functionality.
+ *
+ * @param[in] surface_capabilities A valid VkSurfaceCapabilitiesKHR.
+ * @param[in] game_window_props A valid uGameWindowProperties.
+ * @param[out] surface_extent The obtained surface extent.
+ */
+void
+uvkGetSurfaceExtent(const VkSurfaceCapabilitiesKHR              surface_capabilities,
+                    const uGameWindowProperties* restrict const game_window_props,
+                    VkExtent2D* const restrict                  surface_extent);
+
+/*
+ * @brief Creates a swapchain and all of the objects that must conform with it.
+ *
+ * @param[in] logical_device A valid VkDevice.
+ * @param[in] surface A valid VkSurfaceKHR.
+ * @param[in] surface_capabilities A valid VkSurfaceCapabilitiesKHR pertaining to the surface
+ *            parameter.
+ * @param[in] surface_format A valid VkSurfaceFormatKHr pertaining to the surface parameter.
+ * @param[in] present_mode A valid VkPresentModeKHR pertaining to the surface parameter.
+ * @param[in] graphics_queue_family_index The index corresponding to the graphics queue family.
+ * @param[in] present_queue_family_index The index corresponding to the present queue family.
+ * @param[in] game_window_props A valid uGameWindowProperties.
+ * @param[out] return_swapchain The swapchain to be created.
+ * @param[out] return_preferred_image_count The preferred number of VkImage(s) to be created
+ *             for the swapchain.
+ *
+ * @return True on success, false otherwise.
+ */
+bool
+uvkCreateSwapchain(const VkDevice                              logical_device,
+                   const VkSurfaceKHR                          surface,
+                   const VkSurfaceCapabilitiesKHR              surface_capabilities,
+                   const VkSurfaceFormatKHR                    surface_format,
+                   const VkPresentModeKHR                      present_mode,
+                   const u32                                   graphics_queue_family_index,
+                   const u32                                   present_queue_family_index,
+                   const uGameWindowProperties* const restrict game_window_props,
+                   VkSwapchainKHR*                             return_swapchain,
+                   u32* const restrict                         return_preferred_image_count);
+
+/*
+ * @brief Destroys a previously created swapchain.
+ *
+ * @param[in] logical_device A valid VkDevice.
+ * @param[in] swapchain A valid VkSwapchainKHR to be destroyed.
+ */
+void
+uvkDestroySwapchain(const VkDevice logical_device, VkSwapchainKHR swapchain);
+
+/*
+ * @brief Creates and allocates VkImages for a given VkSwapchainKHR.
+ *
+ * @param[in] logical_device A valid VkDevice.
+ * @param[in] swapchain A valid VkSwapchainKHR.
+ * @param[in] requested_image_count The preferred number of images for the swapchain.
+ * @param[in] return_images An array to store the VkImage(s) created by this function.
+ * @param[in] return_image_count The number of VkImage(s) created by this function.
+ *
+ * @return True on success, false otherwise.
+ */
+bool
+uvkGetSwapchainImages(const VkDevice       logical_device,
+                      const VkSwapchainKHR swapchain,
+                      u32                  requested_image_count,
+                      VkImage**            return_images,
+                      u32*                 return_image_count);
+
+/*
+ * @brief Creates VkImageView(s).
+ *
+ * @param[in] logical_device A valid VkDevice.
+ * @param[in] surface_format A valid SurfaceFormatKHR.
+ * @param[in] images An array of valid VkImage(s).
+ * @param[in] image_count The number of elements in the VkImage array.
+ * @param[in] flags A valid VkImageViewCreateFlags.
+ * @param[in] view_type A valid VkImageViewType.
+ * @param[in] component_mapping A valid VkComponentMapping.
+ * @param[in] sub_resource_range A valid VkImageSubresourceRange.
+ * @param[out] return_image_views The VkImageView(s) created by this function.
+ *
+ * @return True on success, false otherwise.
+ */
+bool
+uvkCreateImageViews(const VkDevice                logical_device,
+                    const VkSurfaceFormatKHR      surface_format,
+                    const VkImage* const restrict images,
+                    const u32                     image_count,
+                    const VkImageViewCreateFlags  flags,
+                    const VkImageViewType         view_type,
+                    const VkComponentMapping      component_mapping,
+                    const VkImageSubresourceRange sub_resource_range,
+                    VkImageView** restrict        return_image_views);
+
+/*
+ * @brief Destroyes VkImageView(s).
+ *
+ * @param[in] logical_device A valid VkDevice.
+ * @param[in] image_views A pointer to an array of VkImageView(s) to destroy.
+ * @param[in] images A pointer to an array of VkImage(s) to destroy.
+ * @param[in] image_view_count The nunber of elements int he VkImageView array.
+ */
+void
+uvkDestroyImageViews(const VkDevice logical_device,
+                     VkImageView**  image_views,
+                     VkImage**      images,
+                     const u32      image_view_count);
+
+/*
+ * @brief Creates a graphics command pool.
+ *
+ * @param[in] logical_device A valid logical device.
+ * @param[in] graphics_queue_family_index The index of the graphics queue family on the provided
+ *            logical device.
+ * @param[in] flags A valid VkCommandPoolCreateFlags.
+ * @param[out] return_command_pool The command pool created by this function.
+ */
+bool
+uvkCreateGraphicsCommandPool(const VkDevice           logical_device,
+                             const u32                graphics_queue_family_index,
+                             VkCommandPoolCreateFlags flags,
+                             VkCommandPool*           return_command_pool);
+
+/*
+ * @brief Destroys a valid VkCommandPool.
+ *
+ * @param[in] logical_device A valid VkDevice.
+ * @param[in] command_ool A valid VkCommandPool to destroy.
+ */
+void
+uvkDestroyCommandPool(const VkDevice logical_device, VkCommandPool command_pool);
+
+/*
+ * @brief Rebuilds a swapcahin. It is considered undefined behavior to call this method when the
+ *        game window is minimized.
+ *
+ * @param[in] os_info A valid os_info. May need to be type-casted to suit the OS you're calling from.
+ * @param[in] physical_device A valid VkPhysicalDevice.
+ * @param[in] logical_device A valid VkDevice.
+ * @param[in] instance A valid VkInstance.
+ * @param[in] game_window_props A valid uGameWindowProperties.
+ * @param[in] graphics_queue_family_index The graphics queue family index.
+ * @param[in] present_queue_family_index The present queue family index.
+ * @param[in] shader_stage_cis An array of VkPipelineShaderStageCreateInfo(s).
+ * @param[in] shader_stage_ci_count The number of elements in the shader stage array.
+ * @param[in/out] swapchain_to_rebuild An existing valid VkSwapchainKHR to rebuild.
+ * @param[in/out] surface_to_rebuild An existing valid VkSurfaceKHR to rebuild.
+ * @param[in/out] surface_capabilities_to_rebuild An existing valid VkSurfaceCapabilitiesKHR to rebuild.
+ * @param[in/out] surface_format_to_rebuild An existing valid VkSurfaceFormatKHR to rebuild.
+ * @param[in/out] present_mode_to_rebuild An existing valid VkPresentModeKHR to rebuild.
+ * @param[in/out] swapchain_to_rebuild An existing valid VkSwapchainKHR to rebuild.
+ *
+ * return True on succes, false otherwise.
+ */
+bool
+uvkRebuildSwapChain(const void* const                           os_info,
+                    const VkPhysicalDevice                      physical_device,
+                    const VkDevice                              logical_device,
+                    const VkInstance                            instance,
+                    const uGameWindowProperties* const restrict game_window_props,
+                    const u32                                   graphics_queue_family_index,
+                    const u32                                   present_queue_family_index,
+                    const VkPipelineShaderStageCreateInfo* const restrict shader_stage_cis,
+                    const u32                                             shader_stage_ci_count,
+                    VkSwapchainKHR                                        swapchain_to_rebuild,
+                    VkSurfaceKHR                                          surface_to_rebuild,
+                    VkSurfaceCapabilitiesKHR    surface_cababilities_to_rebuild,
+                    VkSurfaceFormatKHR          surface_format_to_rebuild,
+                    VkPresentModeKHR            present_mode_to_rebuild,
+                    VkImage* const restrict     images_to_rebuild,
+                    VkImageView* const restrict image_views_to_rebuild,
+                    VkRenderPass                render_pass_to_rebuild,
+                    VkPipeline                  graphics_pipeline_to_rebuild,
+                    VkFramebuffer               frame_buffer_to_rebuild,
+                    VkCommandBuffer             command_buffer_to_rebuild,
+                    u32* const restrict         images_rebuilt,
+                    u32* const restrict         image_views_rebuilt);
+
+/*
+ * @brief Creates a render pass.
+ *
+ * @param[in] logical_device A valid VkDevice.
+ * @param[in] render_pass_create_flags Either 0 or a valid VkRenderPassCreateFlags structure.
+ * @param[in] subpass_description_flags Either 0 or a valid VkSubpassDescriptionFlags structure.
+ * @param[in] pipeline_bind_point A valid VkPipelineBindPoint.
+ * @param[in] attachment_descriptions Either NULL or an array of VkAttachmentDescription structures.
+ * @param[in] attachment_description_count The number of elements in the  VkAttachmentDescription array.
+ * @param[in] input_attachment_references Either NULL or an array of input attachment references.
+ * @param[in] input_attachment_reference_count The number of elements in the input attachment reference
+ *            array.
+ * @param[in] color_attachment_references Either NULL or an array of color attachment references.
+ * @param[in] resolve_attachment_references Either NULL or an array of resolve attachment references.
+ * @param[in] color_attachment_reference_count The number of elements in the color attachment reference
+ *            array. If the resolve array is non null, this is also the number of resolve attachments.
+ * @param[in] preserve_attachments Either NULL or an array of preserve attachments.
+ * @param[in] preserve_attachment_count The number of elements in the preseve attachment array.
+ * @param[in] depth_stencil_attachment_reference Either NULL or a depth stencil attachment reference.
+ * @param[in] subpass_dependencies Either NULL or an array of valid VkSubpassDependencies.
+ * @param[in] subpass_dependency_count The number of elements in the subpass dependency array.
+ * @param[out] return_render_pass A pointer where the render pass created by this function will be stored.
+ *
+ * @return True on success, false otherwise.
+ */
+bool
+uvkCreateRenderPass(const VkDevice                                logical_device,
+                    const VkRenderPassCreateFlags                 render_pass_create_flags,
+                    const VkSubpassDescriptionFlags               subpass_description_flags,
+                    VkPipelineBindPoint                           pipeline_bind_point,
+                    const VkAttachmentDescription* const restrict attachment_descriptions,
+                    const u32                                     attachment_description_count,
+                    const VkAttachmentReference* const restrict   input_attachment_references,
+                    const u32                                     input_attachment_reference_count,
+                    const VkAttachmentReference* const restrict   color_attachment_references,
+                    const VkAttachmentReference* const restrict   resolve_attachment_references,
+                    const u32                                     color_attachment_reference_count,
+                    const u32* const restrict                     preserve_attachments,
+                    const u32                                     preserve_attachment_count,
+                    const VkAttachmentReference* const restrict depth_stencil_attachment_reference,
+                    const VkSubpassDependency* const restrict   subpass_dependencies,
+                    const u32                                   subpass_dependency_count,
+                    VkRenderPass* const restrict                return_render_pass);
+
+/*
+ * @brief Destroys a valid VkRenderPass.
+ *
+ * @param[in] logical_device A valid VkDevice.
+ * @param[in] render_pass A valid VkRenderPass to destroy.
+ */
+void
+uvkDestroyRenderPass(const VkDevice logical_device, VkRenderPass render_pass);
+
+/*
+ * @brief Creates a VkPipeline for graphics and the associated VkPipelineLayout.
+ *
+ * @param[in] logical_device A valid VkDevice.
+ * @param[in] shader_stage_count The number of shader stages in this pipeline.
+ * @param[in] shader_stage_ci An array of create infos for shader stages with shader_stage_count elements.
+ * @param[in] vertex_input_state_ci A valid VkPipelineVertexInputStateCreateInfo.
+ * @param[in] input_assembly_state_ci A valid VkPipelineInputAssemblyStateCreateInfo.
+ * @param[in] viewport_state_ci A valid VkViewportStateCreateInfo.
+ * @param[in] rasterization_state_ci A valid VkPipelineRasterizationStateCreateInfo.
+ * @param[in] multisample_state_ci A valid VkPipelineMultisampleStateCreateInfo.
+ * @param[in] depth_stencil_state_ci A valid VkPipelineDepthStencilStateCreateInfo.
+ * @param[in] color_blend_state_ci A valid VkPipelineColorBlendStateCreateInfo.
+ * @param[in] dynamic_state_ci A valid VkPipelineDynamicStateCreateInfo.
+ * @param[in] pipeline_layout_ci A valid VkPipelineLayoutCreateInfo.
+ * @param[in] render_pass A valid VkRenderPass.
+ * @param[in] subpass_index The index of the subpass in the VkRenderPass.
+ * @param[out] return_pipeline_layout The VkPipelineLayout created by this function.
+ * @param[out] return_graphics_pipeline The graphics VkPipeline created by this function.
+ *
+ * @return True on success, false otherwise.
+ */
+bool
+uvkCreateGraphicsPipeline(const VkDevice                                        logical_device,
+                          const u32                                             shader_stage_count,
+                          const VkPipelineShaderStageCreateInfo* const restrict shader_stage_ci,
+                          const VkPipelineVertexInputStateCreateInfo   vertex_input_state_ci,
+                          const VkPipelineInputAssemblyStateCreateInfo input_assembly_state_ci,
+                          const VkPipelineViewportStateCreateInfo      viewport_state_ci,
+                          const VkPipelineRasterizationStateCreateInfo rasterization_state_ci,
+                          const VkPipelineMultisampleStateCreateInfo   multisample_state_ci,
+                          const VkPipelineDepthStencilStateCreateInfo  depth_stencil_state_ci,
+                          const VkPipelineColorBlendStateCreateInfo    color_blend_state_ci,
+                          const VkPipelineDynamicStateCreateInfo       dynamic_state_ci,
+                          const VkPipelineLayoutCreateInfo             pipeline_layout_ci,
+                          const VkRenderPass                           render_pass,
+                          const u32                                    subpass_index,
+                          VkPipelineLayout* const restrict             return_pipeline_layout,
+                          VkPipeline* const restrict                   return_graphics_pipeline);
+
+/*
+ * @brief Destroys a valid VkPipelineLayout.
+ *
+ * @param[in] logical_device A valid VkDevice.
+ * @param[in] pipeline_layout A valid VkPipelineLayout to destroy.
+ */
+void
+uvkDestroyPipelineLayout(const VkDevice logical_device, VkPipelineLayout pipeline_layout);
+
+/*
+ * @brief Destroys a valid VkPipeline.
+ *
+ * @param[in] logical_device A valid VkDevice.
+ * @param[in] pipeline A valid VkPipeline to destroy.
+ */
+void
+uvkDestroyPipeline(const VkDevice logical_device, VkPipeline pipeline);
+
+/*
+ * @brief Creates one or more VkFrameBuffer(s).
+ *
+ * @param[in] logical_device A valid VkDevice.
+ * @param[in] image_count The number of VkImageView attachments. One frame buffer is created per image view.
+ * @param[in] image_view_attachments An array of VkImageView(s). The pAttachments member of the
+ *            VkFrameBufferCreateInfo structure will be set to each index of this parameter for every
+ *            VkFramebuffer creation iteration, up to image_count.
+ * @param[in] frame_buffer_ci A valid VkFramebufferCreateInfo. The pAttachments member will be set to each
+ *            index of the image_view_attachments array for every VkFrameBuffer creation iteration, up to
+ *            image count. Thus, the attachmentCount parameter should always be set to 1.
+ * @param[out] The frame buffers created by this function.
+ *
+ * @return True on success, false otherwise.
+ */
+bool
+uvkCreateFrameBuffers(const VkDevice                    logical_device,
+                      const u32                         image_count,
+                      const VkImageView* const restrict image_view_attachments,
+                      const VkFramebufferCreateInfo     frame_buffer_ci,
+                      VkFramebuffer* const restrict     return_frame_buffers);
+
+/*
+ * @brief Destroys VkFrameBuffer(s).
+ *
+ * @param[in] logical_device A valid VkDevice.
+ * @param[in] frame_buffers An array of VkFrameBuffer(s) to destroy.
+ * @param[in] frame_buffer_count The number of elements in the VkFrameBuffer array.
+ */
+void
+uvkDestroyFrameBuffers(const VkDevice logical_device,
+                       VkFramebuffer* frame_buffers,
+                       const u32      frame_buffer_count);
+
+/*
+ * @brief Allocates and creates a command buffer(s).
+ *
+ * @param[in] logical_device A valid VkDevice.
+ * @param[in] command_buffer_ai A valid VkCommandBufferAllocateInfo.
+ * @param[out] return_command_buffers The command buffer(s) created by this function.
+ *
+ * @return True on success, false otherwise.
+ */
+bool
+uvkCreateCommandBuffers(const VkDevice                    logical_device,
+                        const VkCommandBufferAllocateInfo command_buffer_ai,
+                        VkCommandBuffer** const restrict  return_command_buffers);
+
+/*
+ * @brief Destroys all command buffers in a command pool.
+ *
+ * @param[in] logical_device A valid VkDevice.
+ * @param[in] command_pool The VkCommandPool to which the VkCommandBuffer(s) belong.
+ * @param[in] command_buffers An array of VkCommandBuffer(s) to destroy.
+ * @param[in] command_buffer_count The number of elements in the VkCommandBuffer array.
+ *
+ * @return True on success, false otherwise.
+ */
+bool
+uvkDestroyCommandBuffers(const VkDevice      logical_device,
+                         const VkCommandPool command_pool,
+                         VkCommandBuffer*    command_buffers,
+                         const u32           command_buffer_count);
+
+/*
+ * @brief Prepares a command buffer to begin recording commands.
+ *
+ * @param[in] command_buffer A valid VkCommandBuffer to record commands on.
+ * @param[in] commaned_buffer_bi A valid VkCommandBufferBeginInfo.
+ *
+ * @return True on success, false otherwise.
+ */
+bool
+uvkBeginCommandBuffer(VkCommandBuffer                command_buffer,
+                      const VkCommandBufferBeginInfo command_buffer_bi);
+
+/*
+ * @brief Prepares a command buffer to stop recording commands.
+ *
+ * @param[in] command_buffer A valid VkCommandBuffer to signal.
+ *
+ * @return True on success, false otherwise.
+ */
+bool
+uvkEndCommandBuffer(VkCommandBuffer command_buffer);
 
 #endif // __UE_VULKAN_TOOLS_H__
-
-// [ cfarvin::STUDY ]  VK_DEPENDENCY_BY_REGION_BIT,
-// VkPipelineVertexInputStateCreateInfo,
-// input_assembly_create_info.primitiveRestartEnable,
-// multi_sample_create_info.sampleShadingEnable,
-// VkPipelineColorBlendAttachmentState, color_blend_create_info.logicOpEnable
-// NOTES:
-// - Skip window manager (or build a cusom one) with VK_KHR_display &&
-// VK_KHR_display_swapchain; this will render fullscreen.

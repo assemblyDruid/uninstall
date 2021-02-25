@@ -28,7 +28,8 @@ BreakBeforeTernaryOperators: 'true'
 BreakConstructorInitializers: BeforeComma
 BreakInheritanceList: BeforeComma
 BreakStringLiterals: 'true'
-ColumnLimit: '120'
+CommentPragmas: '^\\.+'
+ColumnLimit: 100
 FixNamespaceComments: 'true'
 IncludeBlocks: Regroup
 IndentCaseLabels: 'true'
@@ -37,7 +38,10 @@ IndentWidth: '4'
 IndentWrappedFunctionNames: 'false'
 KeepEmptyLinesAtTheStartOfBlocks: 'false'
 Language: Cpp
+PenaltyBreakAssignment: 150
+PenaltyBreakBeforeFirstCallParameter: 0
 PointerAlignment: Left
+ReflowComments: 'false'
 SpaceAfterCStyleCast: 'false'
 SpaceAfterLogicalNot: 'false'
 SpaceAfterTemplateKeyword: 'false'
@@ -49,7 +53,7 @@ SpaceBeforeParens: ControlStatements
 SpaceBeforeRangeBasedForLoopColon: 'true'
 SpaceInEmptyParentheses: 'false'
 SpacesInAngles: 'false'
-SpacesInCStyleCastParentheses: 'true'
+SpacesInCStyleCastParentheses: 'false'
 SpacesInContainerLiterals: 'true'
 SpacesInParentheses: 'false'
 SpacesInSquareBrackets: 'false'

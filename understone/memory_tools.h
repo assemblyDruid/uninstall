@@ -4,6 +4,7 @@
 #include "debug_tools.h"
 #include "type_tools.h"
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,25 +18,25 @@ typedef struct
     const u16 arena_size;
 } uMemoryArena;
 
-__UE_inline__ uMemoryArena*
-              uMAInit(const u16 arena_bytes)
+uMemoryArena*
+uMAInit(const u16 arena_bytes)
 {
     if (!arena_bytes)
     {
         return NULL;
     }
 
-    uMemoryArena* memory_arena = ( uMemoryArena* )malloc(sizeof(uMemoryArena));
-    memory_arena->data         = ( intptr_t* )malloc(arena_bytes);
+    uMemoryArena* memory_arena = (uMemoryArena*)malloc(sizeof(uMemoryArena));
+    memory_arena->data         = (intptr_t*)malloc(arena_bytes);
     memory_arena->offset       = 0;
-    u16* non_const_arena_size  = ( u16* )&(memory_arena->arena_size);
+    u16* non_const_arena_size  = (u16*)&(memory_arena->arena_size);
     *non_const_arena_size      = arena_bytes;
 
     return memory_arena;
 }
 
 // [ cfarvin::RESTORE ] Unused fn warning
-/* __UE_inline__ static void* */
+/* static void* */
 /* uMANext(const uMemoryArena* restrict const memory_arena) */
 /* { */
 /*     if(!(memory_arena && memory_arena->data && memory_arena->arena_size)) */
@@ -49,7 +50,7 @@ __UE_inline__ uMemoryArena*
 // [ cfarvin::RESTORE ] Unused fn warning
 /* #define uMAAllocate(arena, type, num_bytes)     \ */
 /*     (type*)uMAAllocate_API__(arena, num_bytes) */
-/* __UE_inline__ static void* */
+/* static void* */
 /* uMAAllocate_API__( uMemoryArena* restrict const memory_arena, */
 /*                   const u16                          num_bytes) */
 /* { */
@@ -63,9 +64,12 @@ __UE_inline__ uMemoryArena*
 /*     return return_ptr; */
 /* } */
 
-#define uMAPushData(arena, new_data, type) ( type* )uMAPushData_API(arena, ( type* )&(new_data), sizeof(type))
-__UE_inline__ void*
-uMAPushData_API(uMemoryArena* restrict const memory_arena, const void* restrict const new_data, const u16 new_data_size)
+#define uMAPushData(arena, new_data, type) \
+    (type*)uMAPushData_API(arena, (type*)&(new_data), sizeof(type))
+void*
+uMAPushData_API(uMemoryArena* restrict const memory_arena,
+                const void* restrict const   new_data,
+                const u16                    new_data_size)
 {
     if (!(memory_arena && new_data && new_data_size))
     {
@@ -80,13 +84,14 @@ uMAPushData_API(uMemoryArena* restrict const memory_arena, const void* restrict 
     }
 
     intptr_t* dest_ptr = memory_arena->data + memory_arena->offset;
-    memcpy(dest_ptr, new_data, ( size_t )new_data_size);
+    memcpy(dest_ptr, new_data, (size_t)new_data_size);
     memory_arena->offset += new_data_size;
-    return ( void* )dest_ptr;
+    return (void*)dest_ptr;
 }
 
-#define uMAPushArray(arena, new_data, type, num_bytes) ( type* )uMAPushArray_API(arena, new_data, num_bytes)
-__UE_inline__ void*
+#define uMAPushArray(arena, new_data, type, num_bytes) \
+    (type*)uMAPushArray_API(arena, new_data, num_bytes)
+void*
 uMAPushArray_API(uMemoryArena* memory_arena, void* new_data, u16 new_data_size)
 {
     if (!(memory_arena && new_data && new_data_size))
@@ -102,12 +107,12 @@ uMAPushArray_API(uMemoryArena* memory_arena, void* new_data, u16 new_data_size)
     }
 
     intptr_t* dest_ptr = memory_arena->data + memory_arena->offset;
-    memcpy(dest_ptr, new_data, ( size_t )new_data_size);
+    memcpy(dest_ptr, new_data, (size_t)new_data_size);
     memory_arena->offset += new_data_size;
-    return ( void* )(dest_ptr);
+    return (void*)(dest_ptr);
 }
 
-__UE_inline__ bool
+bool
 uMADestroy(uMemoryArena* memory_arena)
 {
     if (!(memory_arena && memory_arena->data))

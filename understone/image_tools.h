@@ -4,13 +4,15 @@
 #include <engine_tools/debug_tools.h>
 #include <engine_tools/memory_tools.h>
 #include <engine_tools/type_tools.h>
+#include <stdbool.h>
 #ifdef _linux_
 #include <unistd.h>
 #endif
 
 uMemoryArena* imageArena;
-#define imagePushData(new_data, type)             uMAPushData(imageArena, new_data, type)
-#define imagePushArray(new_data, type, num_bytes) uMAPushArray(imageArena, new_data, type, num_bytes)
+#define imagePushData(new_data, type) uMAPushData(imageArena, new_data, type)
+#define imagePushArray(new_data, type, num_bytes) \
+    uMAPushArray(imageArena, new_data, type, num_bytes)
 /* #define imageAlloc(type, num_bytes) uMAAllocate(imageArena, type, num_bytes)
  */
 
@@ -36,7 +38,7 @@ typedef struct
     u8*         img_pixels;
 } uImage;
 
-__UE_inline__ u8
+u8
 uReadNextByte(const restrict uImage* const img)
 {
     if (img->img_cursor < img->img_end)
@@ -48,38 +50,39 @@ uReadNextByte(const restrict uImage* const img)
     return 0;
 }
 
-__UE_inline__ u16
+u16
 uRead16AsLE(const restrict uImage* const img)
 {
     u16 tmp = uReadNextByte(img);
     return tmp + (uReadNextByte(img) << 8);
 }
 
-__UE_inline__ u32
+u32
 uRead32AsLE(const restrict uImage* const img)
 {
     u32 tmp = uRead16AsLE(img);
     return tmp + (uRead16AsLE(img) << 16);
 }
 
-__UE_inline__ bool
+bool
 uLoadBitmap(const restrict char* const file_path, const restrict uImage* const img)
 {
     printf("TODO: uLoadBitmap()"); // [ cfarvin::TODO ]
     return false;
 }
 
-__UE_inline__ static u8
+static u8
 BindValueTo8BitColorChannel(const r32 value_min, const r32 value_max, const r32 value)
 {
     __UE_ASSERT__(value_max > value_min);
     __UE_ASSERT__((value_max >= value) && (value_min <= value));
 
-    return ( u8 )NormalizeToRange(value_min, value_max, 0.0f, 255.0f, value);
+    return (u8)NormalizeToRange(value_min, value_max, 0.0f, 255.0f, value);
 }
 
-__UE_inline__ static void
-RGB32ToHSV32(const Color32_RGB* restrict const rgb_source, _mut_ Color32_HSV* restrict const hsv_result)
+static void
+RGB32ToHSV32(const Color32_RGB* restrict const rgb_source,
+             _mut_ Color32_HSV* restrict const hsv_result)
 {
     __UE_ASSERT__(rgb_source);
     __UE_ASSERT__(hsv_result);
@@ -169,8 +172,9 @@ RGB32ToHSV32(const Color32_RGB* restrict const rgb_source, _mut_ Color32_HSV* re
     hsv_result->V = value;
 }
 
-__UE_inline__ static void
-HSV32ToRGB32(const Color32_HSV* restrict const hsv_source, _mut_ Color32_RGB* restrict const rgb_result)
+static void
+HSV32ToRGB32(const Color32_HSV* restrict const hsv_source,
+             _mut_ Color32_RGB* restrict const rgb_result)
 {
     __UE_ASSERT__(rgb_result);
     __UE_ASSERT__(hsv_source);
@@ -190,7 +194,7 @@ HSV32ToRGB32(const Color32_HSV* restrict const hsv_source, _mut_ Color32_RGB* re
     __UE_ASSERT__(chroma <= 1.0f);
 
     // Assign 2nd largest color component
-    r32 secondary_color = chroma * (1.0f - ( r32 )fabs(fmod(hue_prime, 2.0f) - 1.0f));
+    r32 secondary_color = chroma * (1.0f - (r32)fabs(fmod(hue_prime, 2.0f) - 1.0f));
     __UE_ASSERT__(secondary_color >= 0.0f);
     __UE_ASSERT__(secondary_color <= 1.0f);
 
@@ -254,11 +258,11 @@ HSV32ToRGB32(const Color32_HSV* restrict const hsv_source, _mut_ Color32_RGB* re
     __UE_ASSERT__(rgb_b <= 1.0f);
 
     // Assign rgb components
-    rgb_result->channel.R = ( u8 )round(NormalizeToRange(0.0f, 1.0f, 0.0f, 255.0f, rgb_r));
+    rgb_result->channel.R = (u8)round(NormalizeToRange(0.0f, 1.0f, 0.0f, 255.0f, rgb_r));
 
-    rgb_result->channel.G = ( u8 )round(NormalizeToRange(0.0f, 1.0f, 0.0f, 255.0f, rgb_g));
+    rgb_result->channel.G = (u8)round(NormalizeToRange(0.0f, 1.0f, 0.0f, 255.0f, rgb_g));
 
-    rgb_result->channel.B = ( u8 )round(NormalizeToRange(0.0f, 1.0f, 0.0f, 255.0f, rgb_b));
+    rgb_result->channel.B = (u8)round(NormalizeToRange(0.0f, 1.0f, 0.0f, 255.0f, rgb_b));
 }
 
 static void
@@ -273,7 +277,11 @@ WritePPM32(const restrict Color32_RGB* const pixel_array,
     __UE_ASSERT__(ppm_file);
 
     char ppm_header[MAX_PPM_HEADER_SIZE];
-    u32  success = snprintf(ppm_header, MAX_PPM_HEADER_SIZE, "P3\n%d %d\n255\n", image_width, image_height);
+    u32  success = snprintf(ppm_header,
+                           MAX_PPM_HEADER_SIZE,
+                           "P3\n%d %d\n255\n",
+                           image_width,
+                           image_height);
     __UE_ASSERT__((success > 0) && (success < MAX_PPM_HEADER_SIZE));
     fwrite(ppm_header, success, 1, ppm_file);
 
@@ -286,7 +294,7 @@ WritePPM32(const restrict Color32_RGB* const pixel_array,
         {
             for (char idx = 0; idx < MAX_PPM_TRIPPLET_SIZE; idx++)
             {
-                rgb_tripplet[( size_t )idx] = '\0';
+                rgb_tripplet[(size_t)idx] = '\0';
             }
 
             success = snprintf(rgb_tripplet,
